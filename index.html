@@ -41,13 +41,35 @@
         .portal-home .portal-choice:focus-visible { outline:1px solid rgba(255,255,255,.45); outline-offset:8px; }
         #importModal.active, #modalMask.active { z-index:11000 !important; }
         .preview-home-btn { color:var(--text-secondary) !important; }
-        /* 焚诀纯游玩模式：复用原预览/导入视觉，不显示编辑器 */
-        body.fenjue-player-mode #appContainer { display:flex !important; }
-        body.fenjue-player-mode #navBar,
-        body.fenjue-player-mode #contentArea { display:none !important; }
-        body.fenjue-player-mode #importModal { z-index:11000; }
+
+        /* ---------- 独立入口模态层：焚诀导入 / ZEUS 验证 ---------- */
+        .portal-modal-mask {
+            position:fixed; inset:0; z-index:12000; display:none; align-items:center; justify-content:center;
+            background:#000; padding:16px;
+        }
+        .portal-modal-mask.active { display:flex; }
+        .portal-modal-dialog {
+            width:min(440px, calc(100vw - 32px)); max-height:min(88vh, 760px); overflow:auto;
+            background:#fff; color:#1C1C1E; border-radius:20px; padding:18px;
+            box-shadow:0 18px 60px rgba(0,0,0,.35);
+        }
+        .portal-modal-dialog.portal-zeus-dialog {
+            width:min(340px, calc(100vw - 32px)); padding:28px 22px;
+        }
+        .portal-zeus-input {
+            width:100%; height:46px; border:1px solid #E5E5E5; border-radius:12px;
+            outline:none; background:#fff; color:#111; text-align:center; font:400 16px/1 inherit;
+            letter-spacing:.12em; caret-color:#111;
+        }
+        .portal-zeus-input:focus { border-color:#BDBDBD; }
+        .portal-zeus-input.portal-error { animation:portalShake .28s ease; border-color:#999; }
+
+        /* 焚诀纯游玩模式：编辑器始终不可见，只开放原预览/游玩层。 */
+        body.fenjue-player-mode #appContainer { display:none !important; }
+        body.fenjue-player-mode #previewOverlay { display:flex !important; }
         body.fenjue-player-mode #previewOverlay .back-btn { display:none !important; }
         body.fenjue-player-mode #previewOverlay .preview-home-btn { display:inline-flex !important; }
+        body.fenjue-player-mode #previewOverlay .ending-home-btn { display:inline-flex !important; }
 
         .ending-home-btn { margin-left:6px; }
         @media (max-width:480px) {
@@ -479,6 +501,44 @@
                     <div style="font-size:12px;color:var(--text-tertiary);text-align:center;">紧凑 Base64 码，适合快速分享</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 焚诀独立导入 Modal：不依赖编辑器界面 -->
+    <div class="portal-modal-mask" id="portalImportModal" aria-hidden="true">
+        <div class="portal-modal-dialog" role="dialog" aria-modal="true">
+            <div class="io-tabs" id="portalImportTabs">
+                <button class="io-tab active" data-tab="file">📁 导入文件</button>
+                <button class="io-tab" data-tab="code">📋 导入码</button>
+            </div>
+            <div class="io-panel active" id="portalImportFilePanel">
+                <div class="io-file-zone" id="portalFileDropZone">
+                    <div class="io-file-zone-icon">📂</div>
+                    <div class="io-file-zone-text">点击选择 <strong>.json</strong> 文件<br><span style="font-size:11px;color:var(--text-tertiary);">或拖拽到此处</span></div>
+                    <div class="io-file-zone-text" id="portalFileStatus" style="margin-top:4px;font-weight:500;color:var(--accent-pink);"></div>
+                    <input type="file" class="io-file-input" id="portalFileImportInput" accept=".json">
+                </div>
+                <div class="io-btn-group">
+                    <button class="btn-io-secondary" id="portalImportFileCancel">取消</button>
+                </div>
+            </div>
+            <div class="io-panel" id="portalImportCodePanel">
+                <div class="io-code-area">
+                    <textarea class="code-textarea" id="portalImportCodeText" placeholder="在此粘贴导出代码…"></textarea>
+                    <div class="io-btn-group">
+                        <button class="btn-io-secondary" id="portalImportCodeCancel">取消</button>
+                        <button class="btn-io-secondary" id="portalImportCodePaste">📋 粘贴</button>
+                        <button class="btn-io-primary" id="portalImportCodeConfirm">✅ 确认导入</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ZEUS 独立密码 Modal：不显示提示文字 -->
+    <div class="portal-modal-mask" id="portalZeusModal" aria-hidden="true">
+        <div class="portal-modal-dialog portal-zeus-dialog" role="dialog" aria-modal="true">
+            <input class="portal-zeus-input" id="portalZeusPassword" type="password" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="ZEUS 密码">
         </div>
     </div>
 
@@ -1877,13 +1937,13 @@
                 else html += '<span class="review-ending-tag">✨ 故事终章</span>';
                 if (content.trim()) html += `<div class="review-scene-content">${escapeHtml(content)}</div>`;
                 html +=
-                    `</div></div><div class="review-actions"><button class="btn-review-restart" id="btnReviewRestart">↺ 重新开始</button><button class="btn-review-close" id="btnReviewClose">✕ 关闭</button></div></div>`;
+                    `</div></div><div class="review-actions"><button class="btn-review-restart" id="btnReviewRestart">↺ 重新开始</button><button class="btn-review-close ending-home-btn" id="btnReviewHome">首页</button></div></div>`;
                 document.getElementById('previewContent').innerHTML = html;
                 document.getElementById('previewContent').scrollTop = 0;
                 document.getElementById('previewOptionsArea').innerHTML = '';
                 setTimeout(() => {
                     document.getElementById('btnReviewRestart')?.addEventListener('click', restartPreview);
-                    document.getElementById('btnReviewClose')?.addEventListener('click', closePreview);
+                    document.getElementById('btnReviewHome')?.addEventListener('click', returnToPortalHome);
                 }, 100);
             }
 
@@ -1908,6 +1968,47 @@
 
             // ---------- 极简入口 / 首页 ----------
             let portalHomeImportMode = false;
+            let portalZeusAuthorized = false;
+
+            function closePortalImportModal() {
+                const modal = document.getElementById('portalImportModal');
+                if (modal) { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
+                const fileInput = document.getElementById('portalFileImportInput');
+                if (fileInput) fileInput.value = '';
+                const status = document.getElementById('portalFileStatus');
+                if (status) status.textContent = '';
+                const dropZone = document.getElementById('portalFileDropZone');
+                if (dropZone) dropZone.classList.remove('has-file');
+                const code = document.getElementById('portalImportCodeText');
+                if (code) code.value = '';
+            }
+
+            function openPortalImportModal() {
+                const modal = document.getElementById('portalImportModal');
+                if (!modal) return;
+                portalHomeImportMode = true;
+                const status = document.getElementById('portalFileStatus');
+                if (status) status.textContent = '';
+                const dropZone = document.getElementById('portalFileDropZone');
+                if (dropZone) dropZone.classList.remove('has-file');
+                const code = document.getElementById('portalImportCodeText');
+                if (code) code.value = '';
+                const fileInput = document.getElementById('portalFileImportInput');
+                if (fileInput) fileInput.value = '';
+                switchPortalImportTab('file');
+                modal.classList.add('active');
+                modal.setAttribute('aria-hidden', 'false');
+            }
+
+            function switchPortalImportTab(tab) {
+                const tabs = document.querySelectorAll('#portalImportTabs .io-tab');
+                const panels = {
+                    file: document.getElementById('portalImportFilePanel'),
+                    code: document.getElementById('portalImportCodePanel')
+                };
+                tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+                Object.entries(panels).forEach(([k, panel]) => { if (panel) panel.classList.toggle('active', k === tab); });
+            }
 
             function showPortalHome() {
                 const gate = document.getElementById('portalGate');
@@ -1920,14 +2021,50 @@
                 const preview = document.getElementById('previewOverlay');
                 if (preview) preview.classList.remove('active');
                 if (typeof closeImportModal === 'function') closeImportModal();
+                closePortalImportModal();
+                closePortalZeusModal();
+                portalHomeImportMode = false;
+                portalZeusAuthorized = false;
+                document.body.style.overflow = '';
             }
+
+            function closePortalZeusModal() {
+                const modal = document.getElementById('portalZeusModal');
+                if (modal) { modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
+                const input = document.getElementById('portalZeusPassword');
+                if (input) { input.value = ''; input.classList.remove('portal-error'); }
+            }
+
+            function openPortalZeusModal() {
+                const modal = document.getElementById('portalZeusModal');
+                const input = document.getElementById('portalZeusPassword');
+                if (!modal || !input) return;
+                portalZeusAuthorized = false;
+                const home = document.getElementById('portalHome');
+                if (home) home.classList.remove('active');
+                document.body.classList.remove('portal-locked', 'portal-mode', 'fenjue-player-mode');
+                const app = document.getElementById('appContainer');
+                if (app) app.style.display = 'none';
+                modal.classList.add('active');
+                modal.setAttribute('aria-hidden', 'false');
+                input.value = '';
+                input.focus();
+            }
+
             function enterZeus() {
+                openPortalZeusModal();
+            }
+
+            function authorizeZeus() {
+                portalZeusAuthorized = true;
+                closePortalZeusModal();
                 const home = document.getElementById('portalHome');
                 if (home) home.classList.remove('active');
                 document.body.classList.remove('portal-mode', 'portal-locked', 'fenjue-player-mode');
                 const app = document.getElementById('appContainer');
                 if (app) app.style.display = 'flex';
             }
+
             function returnToPortalHome() {
                 try {
                     if (typeof closePreview === 'function') closePreview();
@@ -1935,19 +2072,25 @@
                     if (typeof closeExportModal === 'function') closeExportModal();
                     if (typeof hideModal === 'function') hideModal();
                 } catch (e) {}
-                portalHomeImportMode = false;
                 showPortalHome();
             }
+
+            function cancelFenjueImport() {
+                portalHomeImportMode = false;
+                closePortalImportModal();
+                showPortalHome();
+            }
+
             function enterFenjue() {
-                portalHomeImportMode = true;
                 const home = document.getElementById('portalHome');
                 if (home) home.classList.remove('active');
                 document.body.classList.remove('portal-locked', 'portal-mode');
                 document.body.classList.add('fenjue-player-mode');
                 const app = document.getElementById('appContainer');
-                if (app) app.style.display = 'flex';
-                // 直接复用原来的导入窗口，样式和功能与原预览/编辑器一致。
-                openImportModal();
+                if (app) app.style.display = 'none';
+                const preview = document.getElementById('previewOverlay');
+                if (preview) preview.classList.remove('active');
+                openPortalImportModal();
             }
             function openPreview() {
                 if (wheelAnimationId) { cancelAnimationFrame(wheelAnimationId); wheelAnimationId = null; }
@@ -1968,6 +2111,7 @@
             }
 
             function closePreview() {
+                const fenjueMode = document.body.classList.contains('fenjue-player-mode');
                 if (wheelAnimationId) cancelAnimationFrame(wheelAnimationId);
                 isWheelSpinning = false;
                 PopupManager.close();
@@ -1975,8 +2119,8 @@
                 document.body.style.overflow = '';
                 previewCurrentSceneId = null;
                 previewHistory = [];
-                renderListView();
-                if (document.body.classList.contains('fenjue-player-mode')) {
+                if (!fenjueMode) renderListView();
+                if (fenjueMode) {
                     showPortalHome();
                 }
             }
@@ -2063,12 +2207,13 @@
                     if (onComplete) onComplete();
                     if (portalHomeImportMode) {
                         portalHomeImportMode = false;
+                        closePortalImportModal();
                         const home = document.getElementById('portalHome');
                         if (home) home.classList.remove('active');
                         document.body.classList.remove('portal-mode', 'portal-locked');
                         document.body.classList.add('fenjue-player-mode');
                         const app = document.getElementById('appContainer');
-                        if (app) app.style.display = 'flex';
+                        if (app) app.style.display = 'none';
                         openPreview();
                     }
                 });
@@ -2113,6 +2258,94 @@
                 document.getElementById('portalZeus')?.addEventListener('click', enterZeus);
                 document.getElementById('portalFenjue')?.addEventListener('click', enterFenjue);
                 document.getElementById('btnPreviewHome')?.addEventListener('click', returnToPortalHome);
+
+                // ---- 焚诀独立导入入口 ----
+                document.querySelectorAll('#portalImportTabs .io-tab').forEach(tab => {
+                    tab.addEventListener('click', function() { switchPortalImportTab(this.dataset.tab); });
+                });
+                document.getElementById('portalImportFileCancel')?.addEventListener('click', cancelFenjueImport);
+                document.getElementById('portalImportCodeCancel')?.addEventListener('click', cancelFenjueImport);
+
+                const portalFileInput = document.getElementById('portalFileImportInput');
+                const portalDropZone = document.getElementById('portalFileDropZone');
+                if (portalDropZone && portalFileInput) portalDropZone.addEventListener('click', () => portalFileInput.click());
+                if (portalFileInput) portalFileInput.addEventListener('change', function(e) {
+                    const file = this.files[0];
+                    if (!file) return;
+                    handlePortalImportFile(file);
+                });
+                if (portalDropZone) portalDropZone.addEventListener('dragover', e => { e.preventDefault(); portalDropZone.style.borderColor = 'var(--accent-pink)'; });
+                if (portalDropZone) portalDropZone.addEventListener('dragleave', e => { e.preventDefault(); portalDropZone.style.borderColor = ''; });
+                if (portalDropZone) portalDropZone.addEventListener('drop', e => {
+                    e.preventDefault();
+                    portalDropZone.style.borderColor = '';
+                    const file = e.dataTransfer.files[0];
+                    if (file) handlePortalImportFile(file);
+                });
+
+                function handlePortalImportFile(file) {
+                    if (!/\.json$/i.test(file.name)) { showToast('请选择 .json 文件', 'warning'); return; }
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const parsed = JSON.parse(e.target.result);
+                            const data = parsed && parsed.s && Array.isArray(parsed.s) ? fromCompact(parsed) : parsed;
+                            const valid = validateImportData(data);
+                            if (!valid.valid) { showToast(valid.error, 'warning'); return; }
+                            closePortalImportModal();
+                            doImport(data, () => {});
+                        } catch (err) { showToast('文件解析失败：' + err.message, 'warning'); }
+                    };
+                    reader.readAsText(file);
+                }
+
+                document.getElementById('portalImportCodePaste')?.addEventListener('click', function() {
+                    if (!navigator.clipboard?.readText) { showToast('当前环境不支持读取剪贴板', 'warning'); return; }
+                    navigator.clipboard.readText().then(text => {
+                        const input = document.getElementById('portalImportCodeText');
+                        if (input) input.value = text;
+                        const result = tryParseImportCode(text);
+                        if (result.valid) showToast('已粘贴，可导入 ✅');
+                        else showToast('粘贴完成，但内容无效：' + result.error, 'warning');
+                    }).catch(() => showToast('无法访问剪贴板', 'warning'));
+                });
+
+                document.getElementById('portalImportCodeConfirm')?.addEventListener('click', function() {
+                    const input = document.getElementById('portalImportCodeText');
+                    const code = input ? input.value : '';
+                    const result = tryParseImportCode(code);
+                    if (!result.valid) { showToast(result.error, 'warning'); return; }
+                    closePortalImportModal();
+                    doImport(result.data, () => { if (input) input.value = ''; });
+                });
+
+                // ---- ZEUS 独立验证入口 ----
+                const zeusPassword = document.getElementById('portalZeusPassword');
+                if (zeusPassword) {
+                    const tryZeusUnlock = function() {
+                        if (zeusPassword.value === '777') authorizeZeus();
+                    };
+                    zeusPassword.addEventListener('input', tryZeusUnlock);
+                    zeusPassword.addEventListener('keydown', function(e) {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        if (this.value === '777') authorizeZeus();
+                        else {
+                            this.classList.remove('portal-error');
+                            void this.offsetWidth;
+                            this.classList.add('portal-error');
+                            this.select();
+                        }
+                    });
+                }
+
+                // 入口模态层只能通过外部黑色区域取消，取消后永远回首页。
+                document.getElementById('portalImportModal')?.addEventListener('click', function(e) {
+                    if (e.target === this) cancelFenjueImport();
+                });
+                document.getElementById('portalZeusModal')?.addEventListener('click', function(e) {
+                    if (e.target === this) { closePortalZeusModal(); showPortalHome(); }
+                });
 
                 // ---- 重置 ----
                 document.getElementById('btnReset')?.addEventListener('click', resetToDefault);
@@ -2287,7 +2520,11 @@
                         saveData(); }
                 });
 
-                document.getElementById('modalCancel')?.addEventListener('click', hideModal);
+                document.getElementById('modalCancel')?.addEventListener('click', function() {
+                    const portalImportPending = portalHomeImportMode;
+                    hideModal();
+                    if (portalImportPending) returnToPortalHome();
+                });
                 document.getElementById('modalConfirm')?.addEventListener('click', function() {
                     if (modalCallback) modalCallback();
                     hideModal();
@@ -2304,7 +2541,11 @@
                         if (e.target === this) {
                             if (this.id === 'exportModal') closeExportModal();
                             else if (this.id === 'importModal') closeImportModal();
-                            else if (this.id === 'modalMask') hideModal();
+                            else if (this.id === 'modalMask') {
+                                const portalImportPending = portalHomeImportMode;
+                                hideModal();
+                                if (portalImportPending) returnToPortalHome();
+                            }
                         }
                     });
                 });
@@ -2314,6 +2555,11 @@
                 if (initialApp) initialApp.style.display = 'none';
                 const initialGate = document.getElementById('portalGate');
                 if (initialGate) initialGate.style.display = 'flex';
+                const initialHome = document.getElementById('portalHome');
+                if (initialHome) initialHome.classList.remove('active');
+                window.addEventListener('popstate', function() {
+                    if (!portalZeusAuthorized && !document.body.classList.contains('fenjue-player-mode')) showPortalHome();
+                });
 
                 // ---- 初始化 ----
                 loadData();
