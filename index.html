@@ -5,6 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>momo的mythweaver</title>
     <style>
+
+        /* ---------- 极简入口 / 首页 ---------- */
+        body.portal-locked { background:#000 !important; overflow:hidden; }
+        body.portal-locked #appContainer,
+        body.portal-locked #previewOverlay { display:none !important; }
+        .portal-gate {
+            position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center;
+            background:#000; padding:24px;
+        }
+        .portal-password {
+            width:min(280px, 76vw); height:42px; border:0; border-bottom:1px solid rgba(255,255,255,.28);
+            outline:none; background:transparent; color:#fff; text-align:center; font:400 15px/1 inherit;
+            letter-spacing:.12em; border-radius:0; caret-color:#fff; transition:border-color .25s ease, transform .25s ease;
+        }
+        .portal-password:focus { border-bottom-color:rgba(255,255,255,.8); }
+        .portal-password.portal-error { animation:portalShake .28s ease; border-bottom-color:rgba(255,255,255,.7); }
+        @keyframes portalShake {
+            0%,100%{transform:translateX(0)} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)}
+        }
+        .portal-home {
+            position:fixed; inset:0; z-index:9999; display:none; align-items:center; justify-content:center;
+            background:#000; color:#fff; padding:24px;
+        }
+        .portal-home.active { display:flex; }
+        .portal-menu { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:34px; width:min(320px,80vw); }
+        .portal-choice {
+            appearance:none; border:0; background:transparent; color:#fff; min-height:48px; padding:8px 24px;
+            font:400 18px/1.2 inherit; letter-spacing:.16em; cursor:pointer; opacity:.9;
+            transition:opacity .25s ease, transform .25s ease, letter-spacing .25s ease;
+        }
+        .portal-choice:hover { opacity:1; transform:translateY(-1px); letter-spacing:.2em; }
+        .portal-choice:active { transform:scale(.97); }
+        .portal-import-note { display:none; }
+        .portal-home .portal-choice:focus-visible { outline:1px solid rgba(255,255,255,.45); outline-offset:8px; }
+        #importModal.active, #modalMask.active { z-index:11000 !important; }
+        .preview-home-btn { color:var(--text-secondary) !important; }
+        /* 焚诀纯游玩模式：复用原预览/导入视觉，不显示编辑器 */
+        body.fenjue-player-mode #appContainer { display:flex !important; }
+        body.fenjue-player-mode #navBar,
+        body.fenjue-player-mode #contentArea { display:none !important; }
+        body.fenjue-player-mode #importModal { z-index:11000; }
+        body.fenjue-player-mode #previewOverlay .back-btn { display:none !important; }
+        body.fenjue-player-mode #previewOverlay .preview-home-btn { display:inline-flex !important; }
+
+        .ending-home-btn { margin-left:6px; }
+        @media (max-width:480px) {
+            .portal-menu { gap:30px; }
+            .portal-choice { font-size:17px; }
+        }
         /* ---------- 全局基础 ---------- */
         * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action: manipulation; }
         html { font-family: -apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue','PingFang SC','Noto Sans SC',sans-serif; font-size:16px; line-height:1.5; background:#F8F8F6; scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
@@ -333,7 +382,19 @@
         input, textarea, select { touch-action: manipulation; }
     </style>
 </head>
-<body>
+<body class="portal-locked">
+
+    <div class="portal-gate" id="portalGate" aria-label="入口">
+        <input class="portal-password" id="portalPassword" type="password" autocomplete="off" spellcheck="false" aria-label="密码">
+    </div>
+
+    <div class="portal-home" id="portalHome">
+        <div class="portal-menu">
+            <button class="portal-choice" id="portalFenjue">焚诀</button>
+            <button class="portal-choice" id="portalZeus">ZEUS</button>
+        </div>
+    </div>
+
     <div class="app-container" id="appContainer">
         <nav class="nav-bar" id="navBar"><div class="nav-left" id="navLeft"></div><div class="nav-center" id="navCenter">momo的mythweaver</div><div class="nav-right" id="navRight"></div></nav>
         <div class="content-area" id="contentArea">
@@ -361,7 +422,7 @@
                 <div class="toggle-row"><span class="toggle-label">设为起始场景</span><label class="toggle-switch"><input type="checkbox" id="editIsStartScene"><span class="toggle-slider"></span></label></div>
                 <div class="toggle-row"><span class="toggle-label">设为结局场景</span><label class="toggle-switch"><input type="checkbox" id="editIsEndingScene"><span class="toggle-slider ending-slider"></span></label></div>
                 <div class="edit-group collapsible-group"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">选项列表</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="optionsEditContainer"></div><button class="btn-add-option" id="btnAddOption">+ 添加选项</button></div>
-                <div class="edit-group collapsible-group"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">💎 特殊奖励</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="specialWheelEditor"></div></div>
+                <div class="edit-group collapsible-group"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">💎</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="specialWheelEditor"></div></div>
                 <div class="edit-group collapsible-group" id="variableManager" style="display:none;"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">全局变量</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="variableEditContainer"></div><button class="btn-add-option" id="btnAddVariable">+ 添加变量</button></div>
                 <button class="btn-danger" id="btnDeleteScene" style="margin-top:8px;align-self:center;">🗑 删除此场景</button>
             </div>
@@ -375,7 +436,7 @@
     </div>
 
     <div class="preview-overlay" id="previewOverlay">
-        <div class="preview-nav"><button class="btn-nav back-btn" id="btnPreviewBack"><span class="arrow">‹</span> 返回</button><span class="preview-title" id="previewGameTitle">your future .....?</span><div style="display:flex; align-items:center; gap:4px;"><button class="btn-nav" id="btnPreviewRestart">↺ 重来</button><button class="sound-toggle-btn" id="soundToggleBtn" aria-label="音效开关">🔊</button><button class="popup-toggle-btn" id="popupToggleBtn" aria-label="弹窗提示开关">🔔</button></div></div>
+        <div class="preview-nav"><button class="btn-nav back-btn" id="btnPreviewBack"><span class="arrow">‹</span> 返回</button><span class="preview-title" id="previewGameTitle">your future .....?</span><div style="display:flex; align-items:center; gap:2px;"><button class="btn-nav preview-home-btn" id="btnPreviewHome">首页</button><button class="btn-nav" id="btnPreviewRestart">↺ 重来</button><button class="sound-toggle-btn" id="soundToggleBtn" aria-label="音效开关">🔊</button><button class="popup-toggle-btn" id="popupToggleBtn" aria-label="弹窗提示开关">🔔</button></div></div>
         <div class="preview-content" id="previewContent"></div>
         <div class="preview-options-area" id="previewOptionsArea"></div>
     </div>
@@ -539,6 +600,7 @@
             // ---------- 核心数据 ----------
             const STORAGE_KEY = 'text_game_editor_v23';
             let gameData = { title: '祈祷喵🐱', startSceneId: null, scenes: [], variables: [] };
+            const DATA_VERSION = 2;
             let playerState = {};
             let playerAchievements = [];
             let playerItems = [];
@@ -553,9 +615,9 @@
             function saveData() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData)); } catch (e) {} }
 
             function normalizeSpecialWheel(scene) {
-                if (!scene.specialWheel || typeof scene.specialWheel !== 'object') scene.specialWheel = { enabled:false, name:'特殊奖励', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] };
+                if (!scene.specialWheel || typeof scene.specialWheel !== 'object') scene.specialWheel = { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] };
                 const w = scene.specialWheel;
-                w.enabled = !!w.enabled; w.name = typeof w.name === 'string' ? w.name : '特殊奖励';
+                w.enabled = !!w.enabled; w.name = typeof w.name === 'string' ? w.name : '💎';
                 w.triggerVariable = typeof w.triggerVariable === 'string' ? w.triggerVariable : '';
                 w.triggerOperator = w.triggerOperator || '>='; w.triggerValue = Number.isFinite(Number(w.triggerValue)) ? Number(w.triggerValue) : 0;
                 w.once = w.once !== false; w.used = !!w.used;
@@ -642,6 +704,7 @@
 
             function toCompact(data) {
                 const clone = JSON.parse(JSON.stringify(data));
+                clone.version = DATA_VERSION;
 
                 function transform(obj) {
                     if (!obj || typeof obj !== 'object') return obj;
@@ -678,7 +741,9 @@
 
             function exportAsFile() {
                 if (!gameData.scenes.length) { showToast('没有数据可导出', 'warning'); return; }
-                const data = JSON.stringify(gameData, null, 2);
+                const exportData = JSON.parse(JSON.stringify(gameData));
+                exportData.version = DATA_VERSION;
+                const data = JSON.stringify(exportData, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -694,8 +759,15 @@
 
             // ---- 导入数据验证 ----
             function validateImportData(data) {
-                if (!data || typeof data !== 'object') return { valid: false, error: '数据格式无效' };
+                if (!data || typeof data !== 'object' || Array.isArray(data)) return { valid: false, error: '数据格式无效' };
                 if (!Array.isArray(data.scenes)) return { valid: false, error: '缺少 scenes 数组' };
+                if (data.variables !== undefined && !Array.isArray(data.variables)) return { valid: false, error: 'variables 格式无效' };
+                if (data.startSceneId != null && typeof data.startSceneId !== 'string') return { valid: false, error: '起始场景格式无效' };
+                for (const scene of data.scenes) {
+                    if (!scene || typeof scene !== 'object') return { valid: false, error: '存在无效场景数据' };
+                    if (scene.options !== undefined && !Array.isArray(scene.options)) return { valid: false, error: '场景选项格式无效' };
+                    if (scene.specialWheel !== undefined && (typeof scene.specialWheel !== 'object' || Array.isArray(scene.specialWheel))) return { valid: false, error: '轮盘数据格式无效' };
+                }
                 return { valid: true };
             }
 
@@ -733,8 +805,14 @@
                             allVarNames.add(o.conditionVariable);
                         }
                     });
+                    if (s.specialWheel && s.specialWheel.triggerVariable) {
+                        allVarNames.add(s.specialWheel.triggerVariable);
+                    }
                 });
-                const importedVars = Array.isArray(data.variables) ? data.variables : [];
+                const importedVars = Array.isArray(data.variables) ? data.variables.map(v => ({
+                    name: typeof v?.name === 'string' ? v.name : '',
+                    initialValue: Number.isFinite(Number(v?.initialValue)) ? Number(v.initialValue) : 0
+                })).filter(v => v.name.trim()) : [];
                 const existingNames = new Set(importedVars.map(v => v.name));
                 allVarNames.forEach(name => {
                     if (!existingNames.has(name)) {
@@ -762,14 +840,14 @@
                     order: typeof s.order === 'number' ? s.order : 1.00,
                     specialWheel: s.specialWheel && typeof s.specialWheel === 'object' ? {
                         enabled: !!s.specialWheel.enabled,
-                        name: typeof s.specialWheel.name === 'string' ? s.specialWheel.name : '特殊奖励',
+                        name: typeof s.specialWheel.name === 'string' ? s.specialWheel.name : '💎',
                         triggerVariable: s.specialWheel.triggerVariable || '',
                         triggerOperator: s.specialWheel.triggerOperator || '>=',
                         triggerValue: Number(s.specialWheel.triggerValue) || 0,
                         once: s.specialWheel.once !== false,
                         used: !!s.specialWheel.used,
                         items: Array.isArray(s.specialWheel.items) ? s.specialWheel.items.map(x => ({text: typeof x === 'string' ? x : (x?.text || '新奖励')})) : []
-                    } : { enabled:false, name:'特殊奖励', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
+                    } : { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
                 }));
 
                 const ids = new Set(cleaned.map(s => s.id));
@@ -831,7 +909,7 @@
                         ],
                         isEnding: false,
                         order: 1.00,
-                        specialWheel: { enabled:false, name:'特殊奖励', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
+                        specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
                     });
                     gameData.startSceneId = fid;
                     gameData.title = '祈祷喵🐱';
@@ -948,6 +1026,11 @@
                             opt.conditionEnabled = false;
                         }
                     });
+                    if (scene.specialWheel && scene.specialWheel.triggerVariable === varName) {
+                        scene.specialWheel.triggerVariable = '';
+                        scene.specialWheel.enabled = false;
+                        scene.specialWheel.used = false;
+                    }
                 });
                 saveData();
                 renderVariableEditor();
@@ -1141,17 +1224,17 @@
                 const items = w.items || [];
                 const op = w.triggerOperator || '>=';
                 const enabled = w.enabled;
-                const itemRows = items.map((it,i)=>`<div class="special-wheel-item"><span class="special-wheel-item-number">${i+1}</span><input type="text" class="edit-input special-item-input" data-index="${i}" value="${escapeHtml(it.text||'')}" placeholder="输入奖励名称"><button class="btn-remove-special-item" data-index="${i}" title="删除" aria-label="删除奖励">×</button></div>`).join('');
+                const itemRows = items.map((it,i)=>`<div class="special-wheel-item"><span class="special-wheel-item-number">${i+1}</span><input type="text" class="edit-input special-item-input" data-index="${i}" value="${escapeHtml(it.text||'')}" placeholder="输入内容"><button class="btn-remove-special-item" data-index="${i}" title="删除" aria-label="删除">×</button></div>`).join('');
                 container.innerHTML = `<div class="special-wheel-editor">
-                    <div class="special-wheel-head"><span class="special-wheel-gem">💎</span><div><div class="special-wheel-title">特殊奖励</div><div class="special-wheel-subtitle">满足条件后，在本次选择结算与下一场景之间抽取一次，不改变原路线。</div></div></div>
+                    <div class="special-wheel-head"><span class="special-wheel-gem">💎</span><div><div class="special-wheel-title">💎</div><div class="special-wheel-subtitle">满足条件后抽取一次，不改变原路线。</div></div></div>
                     <label class="toggle-row"><span class="toggle-label" style="font-size:13px;">启用</span><label class="toggle-switch" style="width:40px;height:24px;"><input type="checkbox" id="specialWheelEnabled" ${enabled?'checked':''}><span class="toggle-slider"></span></label></label>
                     ${enabled ? `<div class="special-wheel-section">
                         <div class="special-wheel-section-label">触发条件</div>
                         <div style="display:flex;gap:5px;align-items:center;"><select class="edit-select" id="specialWheelVariable" style="flex:1;"><option value="">选择变量</option>${vars.map(v=>`<option value="${escapeHtml(v.name)}" ${w.triggerVariable===v.name?'selected':''}>${escapeHtml(v.name)}</option>`).join('')}</select><select class="edit-select" id="specialWheelOperator" style="width:64px;padding-right:25px;"><option value=">=" ${op==='>='?'selected':''}>>=</option><option value="<=" ${op==='<='?'selected':''}><=</option><option value=">" ${op==='>'?'selected':''}>></option><option value="<" ${op==='<'?'selected':''}><</option><option value="=" ${op==='='?'selected':''}>=</option></select><input type="number" class="edit-input" id="specialWheelValue" value="${w.triggerValue}" step="any" style="width:78px;"></div>
                     </div>
                     <div class="special-wheel-section">
-                        <div class="special-wheel-items-title"><span>奖励池</span><button type="button" id="btnAddSpecialItem">＋ 添加</button></div>
-                        <div id="specialWheelItems">${itemRows || '<div style="font-size:11px;color:#B9AAA5;padding:4px 0;">还没有奖励，点击右上角添加</div>'}</div>
+                        <div class="special-wheel-items-title"><span>内容</span><button type="button" id="btnAddSpecialItem">＋ 添加</button></div>
+                        <div id="specialWheelItems">${itemRows || '<div style="font-size:11px;color:#B9AAA5;padding:4px 0;">还没有内容，点击右上角添加</div>'}</div>
                     </div>
                     <label class="toggle-row"><span class="toggle-label" style="font-size:12px;">只触发一次</span><label class="toggle-switch" style="width:40px;height:24px;"><input type="checkbox" id="specialWheelOnce" ${w.once?'checked':''}><span class="toggle-slider"></span></label></label>` : ''}
                 </div>`;
@@ -1227,7 +1310,7 @@
                 const nid = generateId();
                 const maxOrder = gameData.scenes.reduce((max, s) => Math.max(max, s.order || 0), 0);
                 const newOrder = Math.round((maxOrder + 1) * 100) / 100;
-                const scene = { id: nid, title: '新场景', content: '', options: [], isEnding: false, order: newOrder, specialWheel: { enabled:false, name:'特殊奖励', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] } };
+                const scene = { id: nid, title: '新场景', content: '', options: [], isEnding: false, order: newOrder, specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] } };
                 gameData.scenes.push(scene);
                 gameData.scenes.sort((a, b) => a.order - b.order);
                 if (!gameData.startSceneId) gameData.startSceneId = nid;
@@ -1375,6 +1458,7 @@
             let historyExpanded = false;
 
             function initPlayerState() {
+                // 每次开始/重来一局，都把“只触发一次”的轮盘状态重置；编辑数据本身不受影响。
                 playerState = {};
                 if (gameData.variables) gameData.variables.forEach(v => { playerState[v.name] = v.initialValue; });
                 playerAchievements = [];
@@ -1636,12 +1720,21 @@
                 normalizeSpecialWheel(scene);
                 const w=scene.specialWheel;
                 const sectors=w.items.filter(x=>x && x.text && x.text.trim());
+
+                // 特殊奖励轮盘也使用结算后的实时变量，并显示它对应的场景卡标题与内容。
+                // 轮盘本身保持简洁，只用图标表示，不再显示“条件已满足/获得一次额外抽取机会”等说明。
+                const previewContent=document.getElementById('previewContent');
+                if (previewContent) {
+                    previewContent.innerHTML =
+                        `${renderPlayerStateBar()}<div class="history-bar" id="historyBar"></div><div class="preview-scene-title">${escapeHtml(scene.title||'')}</div><div class="preview-scene-text">${escapeHtml(scene.content||'')}</div>`;
+                    updateHistoryDisplay();
+                }
+
                 const area=document.getElementById('previewOptionsArea'); area.innerHTML='';
-                const banner=document.createElement('div'); banner.className='special-wheel-banner'; banner.innerHTML=`<strong>🎁 ${escapeHtml(w.name||'特殊奖励')}</strong>条件已满足，获得一次额外抽取机会。抽取不会改变你的原剧情路线。`;
                 const wrapper=document.createElement('div'); wrapper.className='wheel-wrapper';
-                wrapper.innerHTML=`<div class="wheel-pointer-icon">▼</div><div class="wheel-canvas-container"><canvas id="wheelCanvas"></canvas><button class="wheel-center-btn" id="wheelCenterBtn">抽取奖励</button></div>`;
+                wrapper.innerHTML=`<div class="wheel-pointer-icon">▼</div><div class="wheel-canvas-container"><canvas id="wheelCanvas"></canvas><button class="wheel-center-btn" id="wheelCenterBtn" aria-label="抽取">💎</button></div>`;
                 const hint=document.createElement('div'); hint.className='wheel-result-hint'; hint.id='wheelResultHint';
-                area.append(banner,wrapper,hint);
+                area.append(wrapper,hint);
                 const canvas=document.getElementById('wheelCanvas'); if(canvas){wheelCurrentAngle=0;drawWheel(canvas,sectors,0,-1);}
                 if (document.getElementById('wheelCenterBtn')) document.getElementById('wheelCenterBtn').onclick=()=>spinSpecialWheel(scene,sectors);
                 isWheelSpinning=false;
@@ -1670,8 +1763,8 @@
                 const canvas=document.getElementById('wheelCanvas'); if(canvas){drawWheel(canvas,sectors,targetAngle,idx);canvas.classList.remove('spinning');}
                 if(item){
                     if(!playerItems.includes(item.text.trim())) playerItems.push(item.text.trim());
-                    hint.textContent='🎁 获得了：「'+item.text+'」'; hint.classList.add('show');
-                    showToast(`🎁 获得「${item.text.trim()}」`);
+                    hint.textContent='💎 「'+item.text+'」'; hint.classList.add('show');
+                    showToast(`💎 「${item.text.trim()}」`);
                 }
                 const btn=document.getElementById('wheelCenterBtn'); if(btn) btn.disabled=true; lastTickSector=-1; AudioFeedback.playResult(); AudioFeedback.vibrate([30,60,30]);
                 markSpecialWheelUsed(scene);
@@ -1802,7 +1895,7 @@
                     document.getElementById('previewContent').innerHTML =
                         '<div class="preview-end-message"><strong>🔚 游戏结束</strong><p>场景不存在。</p></div>';
                     document.getElementById('previewOptionsArea').innerHTML =
-                        '<button class="preview-restart-btn" onclick="restartPreview()">↺ 重新开始</button>';
+                        '<button class="preview-restart-btn" onclick="restartPreview()">↺ 重新开始</button><button class="preview-restart-btn ending-home-btn" onclick="returnToPortalHome()">首页</button>';
                     return;
                 }
                 let html = `${renderPlayerStateBar()}<div class="history-bar" id="historyBar"></div><div class="preview-scene-title">${escapeHtml(scene.title||'')}</div><div class="preview-scene-text">${escapeHtml(scene.content||'')}</div>`;
@@ -1812,7 +1905,52 @@
                 if (!valid.length) { renderEndingWithReview({ text: '无选项' }); } else buildWheelUI(valid);
             }
 
+
+            // ---------- 极简入口 / 首页 ----------
+            let portalHomeImportMode = false;
+
+            function showPortalHome() {
+                const gate = document.getElementById('portalGate');
+                const home = document.getElementById('portalHome');
+                if (gate) gate.style.display = 'none';
+                if (home) home.classList.add('active');
+                document.body.classList.remove('portal-locked', 'portal-mode', 'fenjue-player-mode');
+                const app = document.getElementById('appContainer');
+                if (app) app.style.display = 'none';
+                const preview = document.getElementById('previewOverlay');
+                if (preview) preview.classList.remove('active');
+                if (typeof closeImportModal === 'function') closeImportModal();
+            }
+            function enterZeus() {
+                const home = document.getElementById('portalHome');
+                if (home) home.classList.remove('active');
+                document.body.classList.remove('portal-mode', 'portal-locked', 'fenjue-player-mode');
+                const app = document.getElementById('appContainer');
+                if (app) app.style.display = 'flex';
+            }
+            function returnToPortalHome() {
+                try {
+                    if (typeof closePreview === 'function') closePreview();
+                    if (typeof closeImportModal === 'function') closeImportModal();
+                    if (typeof closeExportModal === 'function') closeExportModal();
+                    if (typeof hideModal === 'function') hideModal();
+                } catch (e) {}
+                portalHomeImportMode = false;
+                showPortalHome();
+            }
+            function enterFenjue() {
+                portalHomeImportMode = true;
+                const home = document.getElementById('portalHome');
+                if (home) home.classList.remove('active');
+                document.body.classList.remove('portal-locked', 'portal-mode');
+                document.body.classList.add('fenjue-player-mode');
+                const app = document.getElementById('appContainer');
+                if (app) app.style.display = 'flex';
+                // 直接复用原来的导入窗口，样式和功能与原预览/编辑器一致。
+                openImportModal();
+            }
             function openPreview() {
+                if (wheelAnimationId) { cancelAnimationFrame(wheelAnimationId); wheelAnimationId = null; }
                 if (!gameData.scenes.length) { showToast('请先创建场景', 'warning'); return; }
                 if (!gameData.startSceneId || !getSceneById(gameData.startSceneId)) { gameData.startSceneId = gameData.scenes[0]
                         .id;
@@ -1838,10 +1976,13 @@
                 previewCurrentSceneId = null;
                 previewHistory = [];
                 renderListView();
+                if (document.body.classList.contains('fenjue-player-mode')) {
+                    showPortalHome();
+                }
             }
 
             function restartPreview() {
-                if (wheelAnimationId) cancelAnimationFrame(wheelAnimationId);
+                if (wheelAnimationId) { cancelAnimationFrame(wheelAnimationId); wheelAnimationId = null; }
                 isWheelSpinning = false;
                 PopupManager.close();
                 previewCurrentSceneId = gameData.startSceneId;
@@ -1912,6 +2053,7 @@
                     gameData.startSceneId = result.startSceneId;
                     gameData.scenes = result.scenes;
                     gameData.variables = result.variables;
+                    gameData.scenes.forEach(s => { normalizeSpecialWheel(s); s.specialWheel.used = false; });
                     saveData();
                     renderListView();
                     fullRefreshSceneCards();
@@ -1919,6 +2061,16 @@
                     document.getElementById('gameTitleInput').value = gameData.title;
                     showToast('导入成功 📥');
                     if (onComplete) onComplete();
+                    if (portalHomeImportMode) {
+                        portalHomeImportMode = false;
+                        const home = document.getElementById('portalHome');
+                        if (home) home.classList.remove('active');
+                        document.body.classList.remove('portal-mode', 'portal-locked');
+                        document.body.classList.add('fenjue-player-mode');
+                        const app = document.getElementById('appContainer');
+                        if (app) app.style.display = 'flex';
+                        openPreview();
+                    }
                 });
             }
 
@@ -1928,6 +2080,40 @@
                 window.addEventListener('error', function(ev) {
                     console.error('[momo-mythweaver]', ev.error || ev.message);
                 });
+
+                // ---- 极简入口 ----
+                const portalPassword = document.getElementById('portalPassword');
+                if (portalPassword) {
+                    let portalUnlocking = false;
+                    const tryPortalUnlock = function() {
+                        if (portalUnlocking) return;
+                        if (portalPassword.value === 'momoka') {
+                            portalUnlocking = true;
+                            portalPassword.value = '';
+                            showPortalHome();
+                        }
+                    };
+                    // 手机没有 Enter：输入完整密码后自动进入。
+                    portalPassword.addEventListener('input', tryPortalUnlock);
+                    portalPassword.addEventListener('keydown', function(e) {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        if (this.value === 'momoka') {
+                            tryPortalUnlock();
+                        } else {
+                            this.classList.remove('portal-error');
+                            void this.offsetWidth;
+                            this.classList.add('portal-error');
+                            this.select();
+                        }
+                    });
+                    portalPassword.focus();
+                }
+
+                document.getElementById('portalZeus')?.addEventListener('click', enterZeus);
+                document.getElementById('portalFenjue')?.addEventListener('click', enterFenjue);
+                document.getElementById('btnPreviewHome')?.addEventListener('click', returnToPortalHome);
+
                 // ---- 重置 ----
                 document.getElementById('btnReset')?.addEventListener('click', resetToDefault);
 
@@ -1980,11 +2166,12 @@
                 });
 
                 function handleImportFile(file) {
-                    if (!file.name.endsWith('.json')) { showToast('请选择 .json 文件', 'warning'); return; }
+                    if (!/\.json$/i.test(file.name)) { showToast('请选择 .json 文件', 'warning'); return; }
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         try {
-                            const data = JSON.parse(e.target.result);
+                            const parsed = JSON.parse(e.target.result);
+                            const data = parsed && parsed.s && Array.isArray(parsed.s) ? fromCompact(parsed) : parsed;
                             const valid = validateImportData(data);
                             if (!valid.valid) { showToast(valid.error, 'warning'); return; }
                             closeImportModal();
@@ -2121,6 +2308,12 @@
                         }
                     });
                 });
+
+
+                const initialApp = document.getElementById('appContainer');
+                if (initialApp) initialApp.style.display = 'none';
+                const initialGate = document.getElementById('portalGate');
+                if (initialGate) initialGate.style.display = 'flex';
 
                 // ---- 初始化 ----
                 loadData();
