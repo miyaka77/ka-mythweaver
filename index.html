@@ -232,6 +232,7 @@
         .btn-small:active { background:var(--pale-pink); }
         /* ---------- 底部栏 ---------- */
         .bottom-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:rgba(255,255,255,0.76); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-top:0.5px solid rgba(0,0,0,0.07); padding:8px 8px calc(8px + var(--safe-bottom)) 8px; display:flex; gap:4px; z-index:100; align-items:center; }
+        #bottomToolbarPanel > button { min-width:0; width:100%; box-sizing:border-box; }
         @media (max-width:480px) { .bottom-bar { max-width:100%; left:0; transform:none; } }
         @media (min-width:700px) { .bottom-bar { max-width:700px; } }
         @media (min-width:900px) { .bottom-bar { max-width:800px; } }
@@ -402,7 +403,38 @@
             button, input, textarea, select { -webkit-tap-highlight-color: transparent; }
         button { touch-action: manipulation; }
         input, textarea, select { touch-action: manipulation; }
-    </style>
+    
+        /* 普通场景 / 💎特殊场景编辑分离 */
+        #specialSceneToolbar { width:100%; display:flex; flex-direction:column; gap:6px; position:relative; }
+        #specialSceneToolbarPanel {
+            display:none;
+            position:absolute;
+            left:0;
+            right:0;
+            bottom:calc(100% + 6px);
+            z-index:1000;
+            box-sizing:border-box;
+            padding:8px;
+            gap:6px;
+            flex-wrap:wrap;
+            justify-content:center;
+            align-items:center;
+            background:var(--panel-bg,#fff);
+            border:1px solid var(--border-color,#eee);
+            border-radius:12px;
+            box-shadow:0 -8px 24px rgba(0,0,0,.12);
+        }
+        #specialSceneToolbarPanel.open { display:flex; }
+        #specialSceneToolbarPanel .btn-tool,
+        #specialSceneToolbarPanel .btn-primary,
+        #specialSceneToolbarPanel .btn-secondary { flex:0 1 auto; min-width:0; max-width:100%; }
+        body.special-scene-mode #specialSceneToolbar .special-mode-label { display:inline-flex; }
+        body:not(.special-scene-mode) #specialSceneToolbar .special-mode-label { display:none; }
+        @media (max-width:600px) {
+            #specialSceneToolbarPanel { left:4px; right:4px; padding:7px; gap:5px; border-radius:10px; }
+            #specialSceneToolbarPanel button { font-size:12px; padding-left:10px; padding-right:10px; }
+        }
+</style>
 </head>
 <body class="portal-locked">
 
@@ -444,16 +476,21 @@
                 <div class="toggle-row"><span class="toggle-label">设为起始场景</span><label class="toggle-switch"><input type="checkbox" id="editIsStartScene"><span class="toggle-slider"></span></label></div>
                 <div class="toggle-row"><span class="toggle-label">设为结局场景</span><label class="toggle-switch"><input type="checkbox" id="editIsEndingScene"><span class="toggle-slider ending-slider"></span></label></div>
                 <div class="edit-group collapsible-group"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">选项列表</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="optionsEditContainer"></div><button class="btn-add-option" id="btnAddOption">+ 添加选项</button></div>
-                <div class="edit-group collapsible-group"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">💎</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="specialWheelEditor"></div></div>
+                <div class="edit-group collapsible-group" id="specialWheelEditGroup" style="display:none;"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">💎</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="specialWheelEditor"></div></div>
                 <div class="edit-group collapsible-group" id="variableManager" style="display:none;"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">全局变量</span><span class="edit-collapse-arrow">⌄</span></button></div><div id="variableEditContainer"></div><button class="btn-add-option" id="btnAddVariable">+ 添加变量</button></div>
                 <button class="btn-danger" id="btnDeleteScene" style="margin-top:8px;align-self:center;">🗑 删除此场景</button>
             </div>
         </div>
         <div class="bottom-bar" id="bottomBar">
-            <button class="btn-secondary" id="btnExport">📤 导出</button>
-            <button class="btn-secondary" id="btnImport">📥 导入</button>
-            <button class="btn-primary" id="btnAddScene">+ 新建场景</button>
-            <button class="btn-primary" id="btnPreview" style="background:#FFB3B3;box-shadow:0 4px 14px rgba(255,179,179,0.35);">▶ 预览</button>
+            <button class="btn-tool" id="btnToolbarToggle" type="button" style="width:100%;justify-content:center;">工具栏　⌃</button>
+            <div id="bottomToolbarPanel" style="display:none;width:100%;gap:6px;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:center;">
+                <button class="btn-secondary" id="btnExport">导出</button>
+                <button class="btn-secondary" id="btnImport">导入</button>
+                <button class="btn-primary" id="btnAddScene">新建场景</button>
+                <button class="btn-primary" id="btnAddSpecialScene">新建特殊场景</button>
+                <button class="btn-primary" id="btnToggleSpecialScenes">🔄</button>
+                <button class="btn-primary" id="btnPreview" style="background:#FFB3B3;box-shadow:0 4px 14px rgba(255,179,179,0.35);">预览</button>
+            </div>
         </div>
     </div>
 
@@ -698,7 +735,10 @@
                         gameData.scenes.forEach(s => { if (!Array.isArray(s.options)) s.options = [];
                             s.options = s.options.filter(o => o && typeof o.text === 'string'); if (typeof s.isEnding !==
                                 'boolean') s.isEnding = false; if (typeof s.order !== 'number') s.order = 1.0;
-                            normalizeSpecialWheel(s); });
+                            normalizeSpecialWheel(s);
+                            if (s.sceneType !== 'special' && s.specialWheel && s.specialWheel.enabled) s.sceneType = 'special';
+                            if (s.sceneType !== 'special') s.sceneType = 'normal';
+                        });
                         gameData.scenes.sort((a, b) => a.order - b.order);
                         if (gameData.startSceneId && !ids.has(gameData.startSceneId)) gameData.startSceneId = gameData.scenes
                             .length > 0 ? gameData.scenes[0].id : null;
@@ -752,6 +792,7 @@
                 name: 'n',
                 initialValue: 'iv',
                 specialWheel: 'sw',
+                sceneType: 'st',
                 enabled: 'en',
                 triggerVariable: 'tv',
                 triggerOperator: 'to',
@@ -898,6 +939,7 @@
                     })) : [],
                     isEnding: typeof s.isEnding === 'boolean' ? s.isEnding : false,
                     order: typeof s.order === 'number' ? s.order : 1.00,
+                    sceneType: s.sceneType === 'special' || (s.specialWheel && typeof s.specialWheel === 'object' && s.specialWheel.enabled) ? 'special' : 'normal',
                     specialWheel: s.specialWheel && typeof s.specialWheel === 'object' ? {
                         enabled: !!s.specialWheel.enabled,
                         name: typeof s.specialWheel.name === 'string' ? s.specialWheel.name : '💎',
@@ -969,9 +1011,12 @@
                         ],
                         isEnding: false,
                         order: 1.00,
-                        specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
+                        specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] },
+                        sceneType: 'normal'
                     });
                     gameData.startSceneId = fid;
+                    specialSceneMode = false;
+                    document.body.classList.remove('special-scene-mode');
                     gameData.title = '祈祷喵🐱';
                     saveData();
                     renderListView();
@@ -1008,9 +1053,12 @@
                 const container = document.getElementById('sceneCardsContainer');
                 container.innerHTML = '';
                 const empty = document.getElementById('emptyState');
-                if (gameData.scenes.length === 0) { empty.style.display = 'flex';
+                const visibleScenes = getVisibleScenes();
+                if (visibleScenes.length === 0) { empty.style.display = 'flex';
+                    if (specialSceneMode) { empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode('💎')); empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode('还没有特殊场景')); empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode('点击下方工具栏中的“💎 新建特殊场景”开始创建')); }
+                    else { empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode('📝')); empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode('还没有场景')); empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode('点击下方按钮创建第一个场景吧')); }
                     container.appendChild(empty); } else { empty.style.display = 'none';
-                    gameData.scenes.forEach((scene, index) => container.appendChild(createCardElement(scene, index))); }
+                    visibleScenes.forEach((scene, index) => container.appendChild(createCardElement(scene, index))); }
                 const search=document.getElementById('sceneSearch'); if(search && search.value) filterSceneCards(search.value);
             }
 
@@ -1052,12 +1100,54 @@
                 }
             }
 
+            let specialSceneMode = false;
+
+            function isSpecialScene(scene) {
+                return !!scene && (scene.sceneType === 'special' || (scene.specialWheel && scene.specialWheel.enabled === true));
+            }
+
+            function getVisibleScenes() {
+                return gameData.scenes.filter(s => specialSceneMode ? isSpecialScene(s) : !isSpecialScene(s));
+            }
+
+            function renderSpecialSceneCards() {
+                const container = document.getElementById('sceneCardsContainer');
+                const empty = document.getElementById('emptyState');
+                if (!container) return;
+                container.innerHTML = '';
+                const scenes = getVisibleScenes();
+                if (!scenes.length) {
+                    if (empty) { empty.style.display='flex'; empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode('💎')); empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode('还没有特殊场景')); empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode('点击下方工具栏中的“💎 新建特殊场景”开始创建')); container.appendChild(empty); }
+                    return;
+                }
+                if (empty) empty.style.display='none';
+                scenes.forEach((scene,index)=>container.appendChild(createCardElement(scene,index)));
+            }
+
+            let specialSceneToggleLocked = false;
+            function toggleSpecialSceneMode() {
+                // 防止手机/鼠标快速连续点击导致列表重复重绘，避免特殊场景卡出现瞬间消失。
+                if (specialSceneToggleLocked) return;
+                specialSceneToggleLocked = true;
+                setTimeout(() => { specialSceneToggleLocked = false; }, 180);
+
+                specialSceneMode = !specialSceneMode;
+                document.body.classList.toggle('special-scene-mode', specialSceneMode);
+                const btn = document.getElementById('btnToggleSpecialScenes');
+                if (btn) btn.textContent = specialSceneMode ? '普通场景' : '特殊场景';
+                const title = document.getElementById('gameTitleInput');
+                if (title) title.closest('.large-title-section')?.querySelector('.badge-start')?.classList.toggle('special-mode-label', specialSceneMode);
+                currentEditingSceneId = null;
+                renderListView();
+            }
+
             function renderListView() {
                 listScrollPosition = document.getElementById('contentArea').scrollTop;
                 document.getElementById('listView').classList.remove('hidden');
                 document.getElementById('editView').classList.remove('active');
                 currentEditingSceneId = null;
                 document.getElementById('bottomBar').style.display = 'flex';
+                document.body.classList.toggle('special-scene-mode', specialSceneMode);
                 renderNavBar();
                 fullRefreshSceneCards();
                 updateStartBadge();
@@ -1112,11 +1202,21 @@
                 document.getElementById('editSceneContent').value = scene.content || '';
                 document.getElementById('editSceneOrder').value = scene.order != null ? parseFloat(scene.order).toFixed(2) :
                     '1.00';
-                document.getElementById('editIsStartScene').checked = (scene.id === gameData.startSceneId);
-                document.getElementById('editIsEndingScene').checked = scene.isEnding || false;
+                const special = isSpecialScene(scene);
+                document.getElementById('editIsStartScene').checked = special ? false : (scene.id === gameData.startSceneId);
+                document.getElementById('editIsEndingScene').checked = special ? false : (scene.isEnding || false);
+                const startRow = document.getElementById('editIsStartScene')?.closest('.toggle-row');
+                const endingRow = document.getElementById('editIsEndingScene')?.closest('.toggle-row');
+                if (startRow) startRow.style.display = special ? 'none' : '';
+                if (endingRow) endingRow.style.display = special ? 'none' : '';
                 normalizeSpecialWheel(scene);
+                const specialGroup = document.getElementById('specialWheelEditGroup');
+                const optionsGroup = document.getElementById('optionsEditContainer')?.closest('.edit-group');
+                if (specialGroup) specialGroup.style.display = special ? '' : 'none';
+                if (optionsGroup) optionsGroup.style.display = special ? 'none' : '';
+                if (special) renderSpecialWheelEditor(scene);
+                else { const specialContainer = document.getElementById('specialWheelEditor'); if (specialContainer) specialContainer.innerHTML = ''; }
                 renderOptionsEditor(scene);
-                renderSpecialWheelEditor(scene);
                 const isStart = (scene.id === gameData.startSceneId);
                 const varManager = document.getElementById('variableManager');
                 if (varManager) { varManager.style.display = isStart ? 'flex' : 'none'; if (isStart) renderVariableEditor(); }
@@ -1368,17 +1468,34 @@
 
             function addNewScene() {
                 const nid = generateId();
-                const maxOrder = gameData.scenes.reduce((max, s) => Math.max(max, s.order || 0), 0);
+                const maxOrder = gameData.scenes.filter(s => s.sceneType !== 'special').reduce((max, s) => Math.max(max, s.order || 0), 0);
                 const newOrder = Math.round((maxOrder + 1) * 100) / 100;
-                const scene = { id: nid, title: '新场景', content: '', options: [], isEnding: false, order: newOrder, specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] } };
+                const scene = { id: nid, title: '新场景', content: '', options: [], isEnding: false, order: newOrder, sceneType: 'normal', specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] } };
                 gameData.scenes.push(scene);
-                gameData.scenes.sort((a, b) => a.order - b.order);
+                gameData.scenes.sort((a, b) => (a.order || 0) - (b.order || 0));
                 if (!gameData.startSceneId) gameData.startSceneId = nid;
+                specialSceneMode = false;
                 saveData();
-                fullRefreshSceneCards();
+                renderListView();
                 updateStartBadge();
                 openSceneEditor(nid);
                 showToast('场景已创建 ✨');
+            }
+
+            function addNewSpecialScene() {
+                const nid = generateId();
+                const maxOrder = gameData.scenes.reduce((max, s) => Math.max(max, Number(s.order) || 0), 0);
+                const scene = {
+                    id: nid, title: '💎 特殊场景', content: '', options: [], isEnding: false, order: Math.round((maxOrder + 1) * 100) / 100, sceneType: 'special',
+                    specialWheel: { enabled:true, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
+                };
+                gameData.scenes.push(scene);
+                gameData.scenes.sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
+                specialSceneMode = true;
+                saveData();
+                renderListView();
+                openSceneEditor(nid);
+                showToast('💎 特殊场景已创建');
             }
 
             function copyScene(sceneId) {
@@ -2226,6 +2343,29 @@
                     console.error('[momo-mythweaver]', ev.error || ev.message);
                 });
 
+                const toolbarToggle = document.getElementById('btnToolbarToggle');
+                const toolbarPanel = document.getElementById('bottomToolbarPanel');
+                if (toolbarPanel) {
+                    toolbarPanel.style.position = 'absolute';
+                    toolbarPanel.style.left = '0';
+                    toolbarPanel.style.right = '0';
+                    toolbarPanel.style.bottom = 'calc(100% + 6px)';
+                    toolbarPanel.style.zIndex = '1000';
+                    toolbarPanel.style.boxSizing = 'border-box';
+                    toolbarPanel.style.background = 'var(--panel-bg,#fff)';
+                    toolbarPanel.style.border = '1px solid var(--border-color,#eee)';
+                    toolbarPanel.style.borderRadius = '12px';
+                    toolbarPanel.style.padding = '8px';
+                    toolbarPanel.style.boxShadow = '0 -8px 24px rgba(0,0,0,.12)';
+                }
+                const bottomBar = document.getElementById('bottomBar');
+                if (bottomBar) bottomBar.style.position = 'relative';
+                toolbarToggle?.addEventListener('click', () => {
+                    const open = toolbarPanel && toolbarPanel.style.display !== 'none';
+                    if (toolbarPanel) toolbarPanel.style.display = open ? 'none' : 'grid';
+                    if (toolbarToggle) toolbarToggle.textContent = open ? '工具栏　⌃' : '工具栏　⌄';
+                });
+
                 // ---- 极简入口 ----
                 const portalPassword = document.getElementById('portalPassword');
                 if (portalPassword) {
@@ -2444,7 +2584,20 @@
                 });
 
                 // ---- 通用 ----
-                document.getElementById('btnAddScene')?.addEventListener('click', addNewScene);
+                // 工具栏统一事件委托：避免列表刷新后个别按钮出现偶发“点了没反应”。
+                const bottomBarEl = document.getElementById('bottomBar');
+                if (bottomBarEl) {
+                    bottomBarEl.addEventListener('click', function(e) {
+                        const btn = e.target.closest('button[id]');
+                        if (!btn || !bottomBarEl.contains(btn)) return;
+                        if (btn.id === 'btnAddScene') { e.preventDefault(); addNewScene(); }
+                        else if (btn.id === 'btnAddSpecialScene') { e.preventDefault(); addNewSpecialScene(); }
+                        else if (btn.id === 'btnToggleSpecialScenes') { e.preventDefault(); toggleSpecialSceneMode(); }
+                        else if (btn.id === 'btnExport') { e.preventDefault(); openExportModal(); }
+                        else if (btn.id === 'btnImport') { e.preventDefault(); openImportModal(); }
+                        else if (btn.id === 'btnPreview') { e.preventDefault(); openPreview(); }
+                    });
+                }
                 document.getElementById('btnDiagnostics')?.addEventListener('click', openDiagnostics);
                 document.getElementById('diagnosticClose')?.addEventListener('click', closeDiagnostics);
                 document.getElementById('diagnosticModal')?.addEventListener('click', function(e){ if(e.target===this) closeDiagnostics(); });
@@ -2526,8 +2679,16 @@
                     if (portalImportPending) returnToPortalHome();
                 });
                 document.getElementById('modalConfirm')?.addEventListener('click', function() {
-                    if (modalCallback) modalCallback();
-                    hideModal();
+                    const cb = modalCallback;
+                    // 先清掉当前回调并关闭遮罩，避免回调内部异常时整页继续被透明遮罩拦截。
+                    modalCallback = null;
+                    document.getElementById('modalMask')?.classList.remove('active');
+                    try {
+                        if (cb) cb();
+                    } catch (e) {
+                        console.error('[momo-mythweaver] modal callback error:', e);
+                        showToast('操作未完成，请再试一次', 'warning');
+                    }
                 });
 
                 document.getElementById('soundToggleBtn')?.addEventListener('click', () => AudioFeedback.toggle());
