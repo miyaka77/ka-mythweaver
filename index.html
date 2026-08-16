@@ -434,6 +434,8 @@
             #specialSceneToolbarPanel { left:4px; right:4px; padding:7px; gap:5px; border-radius:10px; }
             #specialSceneToolbarPanel button { font-size:12px; padding-left:10px; padding-right:10px; }
         }
+
+            .special-item-main{flex:1;min-width:0}.special-item-vars{margin-top:6px;padding:7px 8px;background:rgba(0,0,0,.025);border-radius:8px}.special-item-vars-title{font-size:11px;color:#8d7f79;margin-bottom:4px}.special-item-vars-title span{color:#b9aaa5}.special-item-var-row{display:flex;align-items:center;gap:4px;margin-top:3px}.special-item-var-row>span{width:60px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.special-item-var-delta{flex:1;padding:5px 7px!important;font-size:12px!important}.special-item-var-clear{width:24px;height:28px;border:0;background:transparent;color:#b9aaa5;border-radius:6px;cursor:pointer}.special-item-var-clear:hover{background:#f5eeee;color:#a66}.special-item-no-vars{font-size:11px;color:#b9aaa5}.special-wheel-item{display:flex;align-items:flex-start;gap:6px;margin-top:7px}.special-wheel-item-number{flex:0 0 22px;text-align:center;padding-top:9px;font-size:11px;color:#a99b95}.special-wheel-item>.btn-remove-special-item{margin-top:7px}
 </style>
 </head>
 <body class="portal-locked">
@@ -702,8 +704,17 @@
             let playerAchievements = [];
             let playerItems = [];
             let specialWheelReturnPending = false;
+            let visitedSceneIds = new Set();
+            let selectedOptionKeys = new Set();
 
             function generateId() { return 'scene_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8); }
+
+            function generateOptionId() { return 'option_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8); }
+
+            function normalizeOptionIds(scene) {
+                if (!scene || !Array.isArray(scene.options)) return;
+                scene.options.forEach(o => { if (o && typeof o === 'object' && !o.id) o.id = generateOptionId(); });
+            }
 
             function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div');
                 d.textContent = s; return d.innerHTML; }
@@ -712,14 +723,24 @@
             function saveData() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData)); } catch (e) {} }
 
             function normalizeSpecialWheel(scene) {
-                if (!scene.specialWheel || typeof scene.specialWheel !== 'object') scene.specialWheel = { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] };
+                if (!scene.specialWheel || typeof scene.specialWheel !== 'object') scene.specialWheel = { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[], conditions:[] };
                 const w = scene.specialWheel;
                 w.enabled = !!w.enabled; w.name = typeof w.name === 'string' ? w.name : '💎';
                 w.triggerVariable = typeof w.triggerVariable === 'string' ? w.triggerVariable : '';
                 w.triggerOperator = w.triggerOperator || '>='; w.triggerValue = Number.isFinite(Number(w.triggerValue)) ? Number(w.triggerValue) : 0;
                 w.once = w.once !== false; w.used = !!w.used;
                 if (!Array.isArray(w.items)) w.items = [];
-                w.items = w.items.map(x => typeof x === 'string' ? {text:x} : ({text: typeof x?.text === 'string' ? x.text : '新奖励'}));
+                w.items = w.items.map(x => typeof x === 'string' ? {text:x, variableChanges:{}} : ({text: typeof x?.text === 'string' ? x.text : '新奖励', variableChanges: (x?.variableChanges && typeof x.variableChanges === 'object') ? {...x.variableChanges} : {}}));
+                // 新版基础触发条件；旧数据会自动把原来的单变量条件转换进去。
+                if (!Array.isArray(w.conditions)) {
+                    w.conditions = w.triggerVariable ? [{type:'variable', variable:w.triggerVariable, operator:w.triggerOperator || '>=', value:Number(w.triggerValue)||0}] : [];
+                }
+                w.conditions = w.conditions.map(c => {
+                    if (!c || typeof c !== 'object') return null;
+                    const type = ['variable','scene','option'].includes(c.type) ? c.type : 'variable';
+                    return {type, variable:typeof c.variable==='string'?c.variable:'', operator:c.operator||'>=', value:Number(c.value)||0, sceneId:typeof c.sceneId==='string'?c.sceneId:'', optionId:typeof c.optionId==='string'?c.optionId:''};
+                }).filter(Boolean);
+                normalizeOptionIds(scene);
             }
 
             function loadData() {
@@ -730,6 +751,7 @@
                         gameData.title = p.title || '祈祷喵🐱';
                         gameData.startSceneId = p.startSceneId || null;
                         gameData.scenes = Array.isArray(p.scenes) ? p.scenes : [];
+                        gameData.scenes.forEach(s=>{ normalizeOptionIds(s); normalizeSpecialWheel(s); });
                         gameData.variables = Array.isArray(p.variables) ? p.variables : [];
                         const ids = new Set(gameData.scenes.map(s => s.id));
                         gameData.scenes.forEach(s => { if (!Array.isArray(s.options)) s.options = [];
@@ -799,7 +821,11 @@
                 triggerValue: 'tvl',
                 once: 'on',
                 used: 'u',
-                items: 'it'
+                items: 'it',
+                conditions: 'cd',
+                type: 'ct',
+                sceneId: 'si',
+                optionId: 'oi'
             };
             const REV_KEY_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
 
@@ -909,6 +935,14 @@
                     if (s.specialWheel && s.specialWheel.triggerVariable) {
                         allVarNames.add(s.specialWheel.triggerVariable);
                     }
+                    if (s.specialWheel && Array.isArray(s.specialWheel.conditions)) {
+                        s.specialWheel.conditions.forEach(c=>{ if(c?.type==='variable' && c.variable) allVarNames.add(c.variable); });
+                    }
+                    if (s.specialWheel && Array.isArray(s.specialWheel.items)) {
+                        s.specialWheel.items.forEach(item => {
+                            if (item?.variableChanges && typeof item.variableChanges === 'object') Object.keys(item.variableChanges).forEach(k => allVarNames.add(k));
+                        });
+                    }
                 });
                 const importedVars = Array.isArray(data.variables) ? data.variables.map(v => ({
                     name: typeof v?.name === 'string' ? v.name : '',
@@ -926,6 +960,7 @@
                     title: typeof s.title === 'string' ? s.title : '未命名',
                     content: typeof s.content === 'string' ? s.content : '',
                     options: Array.isArray(s.options) ? s.options.map(o => ({
+                        id: typeof o.id === 'string' && o.id ? o.id : generateOptionId(),
                         text: typeof o.text === 'string' ? o.text : '选项',
                         targetId: o.targetId || null,
                         variableChanges: (o.variableChanges && typeof o.variableChanges === 'object') ? { ...o
@@ -948,7 +983,8 @@
                         triggerValue: Number(s.specialWheel.triggerValue) || 0,
                         once: s.specialWheel.once !== false,
                         used: !!s.specialWheel.used,
-                        items: Array.isArray(s.specialWheel.items) ? s.specialWheel.items.map(x => ({text: typeof x === 'string' ? x : (x?.text || '新奖励')})) : []
+                        items: Array.isArray(s.specialWheel.items) ? s.specialWheel.items.map(x => ({text: typeof x === 'string' ? x : (x?.text || '新奖励'), variableChanges: (typeof x === 'object' && x?.variableChanges && typeof x.variableChanges === 'object') ? {...x.variableChanges} : {}})) : [],
+                        conditions: Array.isArray(s.specialWheel.conditions) ? s.specialWheel.conditions.map(c => ({type:['variable','scene','option'].includes(c?.type)?c.type:'variable',variable:c?.variable||'',operator:c?.operator||'>=',value:Number(c?.value)||0,sceneId:c?.sceneId||'',optionId:c?.optionId||''})) : []
                     } : { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
                 }));
 
@@ -1176,10 +1212,16 @@
                             opt.conditionEnabled = false;
                         }
                     });
-                    if (scene.specialWheel && scene.specialWheel.triggerVariable === varName) {
-                        scene.specialWheel.triggerVariable = '';
-                        scene.specialWheel.enabled = false;
-                        scene.specialWheel.used = false;
+                    if (scene.specialWheel) {
+                        if (scene.specialWheel.triggerVariable === varName) {
+                            scene.specialWheel.triggerVariable = '';
+                            scene.specialWheel.enabled = false;
+                            scene.specialWheel.used = false;
+                        }
+                        if (Array.isArray(scene.specialWheel.conditions)) {
+                            scene.specialWheel.conditions = scene.specialWheel.conditions.filter(c => c?.type !== 'variable' || c.variable !== varName);
+                        }
+                        if (Array.isArray(scene.specialWheel.items)) scene.specialWheel.items.forEach(item => { if (item?.variableChanges) delete item.variableChanges[varName]; });
                     }
                 });
                 saveData();
@@ -1375,6 +1417,8 @@
                 });
             }
 
+            function formatSceneLabel(s) { const idx = (gameData.scenes || []).slice().sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0)).findIndex(x=>x.id===s.id)+1; return String(idx).padStart(2,'0')+' · '+(s.title||'未命名场景'); }
+
             function renderSpecialWheelEditor(scene) {
                 const container = document.getElementById('specialWheelEditor');
                 if (!container) return;
@@ -1382,47 +1426,61 @@
                 const w = scene.specialWheel;
                 const vars = gameData.variables || [];
                 const items = w.items || [];
-                const op = w.triggerOperator || '>=';
-                const enabled = w.enabled;
-                const itemRows = items.map((it,i)=>`<div class="special-wheel-item"><span class="special-wheel-item-number">${i+1}</span><input type="text" class="edit-input special-item-input" data-index="${i}" value="${escapeHtml(it.text||'')}" placeholder="输入内容"><button class="btn-remove-special-item" data-index="${i}" title="删除" aria-label="删除">×</button></div>`).join('');
-                container.innerHTML = `<div class="special-wheel-editor">
-                    <div class="special-wheel-head"><span class="special-wheel-gem">💎</span><div><div class="special-wheel-title">💎</div><div class="special-wheel-subtitle">满足条件后抽取一次，不改变原路线。</div></div></div>
-                    <label class="toggle-row"><span class="toggle-label" style="font-size:13px;">启用</span><label class="toggle-switch" style="width:40px;height:24px;"><input type="checkbox" id="specialWheelEnabled" ${enabled?'checked':''}><span class="toggle-slider"></span></label></label>
-                    ${enabled ? `<div class="special-wheel-section">
-                        <div class="special-wheel-section-label">触发条件</div>
-                        <div style="display:flex;gap:5px;align-items:center;"><select class="edit-select" id="specialWheelVariable" style="flex:1;"><option value="">选择变量</option>${vars.map(v=>`<option value="${escapeHtml(v.name)}" ${w.triggerVariable===v.name?'selected':''}>${escapeHtml(v.name)}</option>`).join('')}</select><select class="edit-select" id="specialWheelOperator" style="width:64px;padding-right:25px;"><option value=">=" ${op==='>='?'selected':''}>>=</option><option value="<=" ${op==='<='?'selected':''}><=</option><option value=">" ${op==='>'?'selected':''}>></option><option value="<" ${op==='<'?'selected':''}><</option><option value="=" ${op==='='?'selected':''}>=</option></select><input type="number" class="edit-input" id="specialWheelValue" value="${w.triggerValue}" step="any" style="width:78px;"></div>
-                    </div>
-                    <div class="special-wheel-section">
-                        <div class="special-wheel-items-title"><span>内容</span><button type="button" id="btnAddSpecialItem">＋ 添加</button></div>
-                        <div id="specialWheelItems">${itemRows || '<div style="font-size:11px;color:#B9AAA5;padding:4px 0;">还没有内容，点击右上角添加</div>'}</div>
-                    </div>
-                    <label class="toggle-row"><span class="toggle-label" style="font-size:12px;">只触发一次</span><label class="toggle-switch" style="width:40px;height:24px;"><input type="checkbox" id="specialWheelOnce" ${w.once?'checked':''}><span class="toggle-slider"></span></label></label>` : ''}
-                </div>`;
-                container.querySelector('#specialWheelEnabled')?.addEventListener('change', e=>{ w.enabled=e.target.checked; if(!w.enabled) w.used=false; saveData(); renderSpecialWheelEditor(scene); updateCardBySceneId(scene.id); });
-                container.querySelector('#specialWheelVariable')?.addEventListener('change', e=>{w.triggerVariable=e.target.value;saveData();});
-                container.querySelector('#specialWheelOperator')?.addEventListener('change', e=>{w.triggerOperator=e.target.value;saveData();});
-                container.querySelector('#specialWheelValue')?.addEventListener('input', e=>{w.triggerValue=parseFloat(e.target.value)||0;saveData();});
-                container.querySelector('#specialWheelOnce')?.addEventListener('change', e=>{w.once=e.target.checked;saveData();});
-                container.querySelectorAll('.special-item-input').forEach(inp=>inp.addEventListener('input',e=>{w.items[parseInt(e.target.dataset.index)]={text:e.target.value};saveData();}));
-                container.querySelectorAll('.btn-remove-special-item').forEach(btn=>btn.addEventListener('click',()=>{w.items.splice(parseInt(btn.dataset.index),1);saveData();renderSpecialWheelEditor(scene);}));
-                container.querySelector('#btnAddSpecialItem')?.addEventListener('click',()=>{w.items.push({text:'新奖励'});saveData();renderSpecialWheelEditor(scene);});
+                const scenes = gameData.scenes || [];
+                const conditionRows = (w.conditions || []).map((c,i)=>{
+                    const typeOptions = `<option value="variable" ${c.type==='variable'?'selected':''}>📊 变量</option><option value="scene" ${c.type==='scene'?'selected':''}>📖 到达场景</option><option value="option" ${c.type==='option'?'selected':''}>☑️ 选择过选项</option>`;
+                    let detail='';
+                    if(c.type==='variable') detail=`<select class="edit-select special-condition-var" data-index="${i}" style="flex:1"><option value="">选择变量</option>${vars.map(v=>`<option value="${escapeHtml(v.name)}" ${c.variable===v.name?'selected':''}>${escapeHtml(v.name)}</option>`).join('')}</select><select class="edit-select special-condition-op" data-index="${i}" style="width:64px"><option ${c.operator==='>='?'selected':''}>>=</option><option ${c.operator==='<='?'selected':''}><=</option><option ${c.operator==='>'?'selected':''}>></option><option ${c.operator==='<'?'selected':''}><</option><option ${c.operator==='='?'selected':''}>=</option></select><input type="number" class="edit-input special-condition-value" data-index="${i}" value="${c.value}" style="width:78px">`;
+                    else if(c.type==='scene') { const listId='specialSceneSearchList_'+i; const currentScene=scenes.find(x=>x.id===c.sceneId); detail=`<div style="flex:1;min-width:0"><input type="text" class="edit-input special-condition-scene-search" data-index="${i}" list="${listId}" value="${escapeHtml(currentScene?formatSceneLabel(currentScene):'')}" placeholder="搜索场景…" autocomplete="off"><datalist id="${listId}">${scenes.map(x=>`<option value="${escapeHtml(formatSceneLabel(x))}" data-id="${escapeHtml(x.id)}"></option>`).join('')}</datalist></div>`; }
+                    else { const opts=[]; scenes.forEach(s=>{normalizeOptionIds(s);(s.options||[]).forEach(o=>{if(o?.text?.trim()) opts.push({s,o});});}); const listId='specialOptionSearchList_'+i; const current=opts.find(x=>x.s.id===c.sceneId&&x.o.id===c.optionId); detail=`<div style="flex:1;min-width:0"><input type="text" class="edit-input special-condition-option-search" data-index="${i}" list="${listId}" value="${escapeHtml(current?(formatSceneLabel(current.s)+' · '+current.o.text):'')}" placeholder="搜索场景或选项…" autocomplete="off"><datalist id="${listId}">${opts.map(x=>`<option value="${escapeHtml(formatSceneLabel(x.s)+' · '+x.o.text)}" data-scene-id="${escapeHtml(x.s.id)}" data-option-id="${escapeHtml(x.o.id)}"></option>`).join('')}</datalist></div>`; }
+                    return `<div class="special-condition-row" style="display:flex;gap:5px;align-items:center;margin-bottom:6px"><select class="edit-select special-condition-type" data-index="${i}" style="width:105px">${typeOptions}</select>${detail}<button type="button" class="special-condition-remove" data-index="${i}" title="删除">×</button></div>`;
+                }).join('');
+                const itemRows = items.map((it,i)=>{
+                    const changes = it.variableChanges || {};
+                    const changeRows = vars.map(v => { const val=changes[v.name]!==undefined?changes[v.name]:''; return `<div class="special-item-var-row"><span>${escapeHtml(v.name)}</span><input type="number" class="edit-input special-item-var-delta" data-item-index="${i}" data-var-name="${escapeHtml(v.name)}" value="${val}" placeholder="增减量" step="any"><button type="button" class="special-item-var-clear" data-item-index="${i}" data-var-name="${escapeHtml(v.name)}">×</button></div>`; }).join('');
+                    return `<div class="special-wheel-item"><span class="special-wheel-item-number">${i+1}</span><div class="special-item-main"><input type="text" class="edit-input special-item-input" data-index="${i}" value="${escapeHtml(it.text||'')}" placeholder="输入内容"><div class="special-item-vars"><div class="special-item-vars-title">变量变化 <span>（可选）</span></div>${changeRows||'<div class="special-item-no-vars">请先创建变量</div>'}</div></div><button class="btn-remove-special-item" data-index="${i}" title="删除">×</button></div>`;
+                }).join('');
+                container.innerHTML=`<div class="special-wheel-editor"><div class="special-wheel-head"><span class="special-wheel-gem">💎</span><div><div class="special-wheel-title">💎</div><div class="special-wheel-subtitle">满足条件后抽取一次，不改变原路线。</div></div></div><label class="toggle-row"><span class="toggle-label" style="font-size:13px;">启用</span><label class="toggle-switch" style="width:40px;height:24px;"><input type="checkbox" id="specialWheelEnabled" ${w.enabled?'checked':''}><span class="toggle-slider"></span></label></label>${w.enabled?`<div class="special-wheel-section"><div class="special-wheel-section-label">触发条件 <span style="font-size:11px;color:#a9958d">（多个条件需全部满足）</span></div>${conditionRows||'<div style="font-size:11px;color:#B9AAA5;padding:4px 0;">暂无条件</div>'}<button type="button" id="btnAddSpecialCondition" class="btn-small" style="margin-top:2px">＋ 添加触发条件</button></div><div class="special-wheel-section"><div class="special-wheel-items-title"><span>内容</span><button type="button" id="btnAddSpecialItem">＋ 添加</button></div><div id="specialWheelItems">${itemRows||'<div style="font-size:11px;color:#B9AAA5;padding:4px 0;">还没有内容，点击右上角添加</div>'}</div></div><label class="toggle-row"><span class="toggle-label" style="font-size:12px;">只触发一次</span><label class="toggle-switch" style="width:40px;height:24px;"><input type="checkbox" id="specialWheelOnce" ${w.once?'checked':''}><span class="toggle-slider"></span></label></label>`:''}</div>`;
+                const rerender=()=>{saveData();renderSpecialWheelEditor(scene);};
+                container.querySelector('#specialWheelEnabled')?.addEventListener('change',e=>{w.enabled=e.target.checked;if(!w.enabled)w.used=false;saveData();renderSpecialWheelEditor(scene);updateCardBySceneId(scene.id);});
+                container.querySelector('#specialWheelOnce')?.addEventListener('change',e=>{w.once=e.target.checked;saveData();});
+                container.querySelector('#btnAddSpecialCondition')?.addEventListener('click',()=>{w.conditions.push({type:'variable',variable:vars[0]?.name||'',operator:'>=',value:0,sceneId:'',optionId:''});rerender();});
+                container.querySelectorAll('.special-condition-type').forEach(el=>el.addEventListener('change',e=>{w.conditions[+e.target.dataset.index]={type:e.target.value,variable:vars[0]?.name||'',operator:'>=',value:0,sceneId:'',optionId:''};rerender();}));
+                container.querySelectorAll('.special-condition-var').forEach(el=>el.addEventListener('change',e=>{w.conditions[+e.target.dataset.index].variable=e.target.value;saveData();}));
+                container.querySelectorAll('.special-condition-op').forEach(el=>el.addEventListener('change',e=>{w.conditions[+e.target.dataset.index].operator=e.target.value;saveData();}));
+                container.querySelectorAll('.special-condition-value').forEach(el=>el.addEventListener('input',e=>{w.conditions[+e.target.dataset.index].value=parseFloat(e.target.value)||0;saveData();}));
+                container.querySelectorAll('.special-condition-scene-search').forEach(el=>el.addEventListener('change',e=>{const idx=+e.target.dataset.index;const value=e.target.value.trim();const list=document.getElementById(e.target.getAttribute('list'));const opt=list?[...list.options].find(o=>o.value===value):null;w.conditions[idx].sceneId=opt?.dataset.id||'';saveData();}));
+                container.querySelectorAll('.special-condition-option-search').forEach(el=>el.addEventListener('change',e=>{const idx=+e.target.dataset.index;const value=e.target.value.trim();const list=document.getElementById(e.target.getAttribute('list'));const opt=list?[...list.options].find(o=>o.value===value):null;const c=w.conditions[idx];c.sceneId=opt?.dataset.sceneId||'';c.optionId=opt?.dataset.optionId||'';saveData();}));
+                container.querySelectorAll('.special-condition-remove').forEach(el=>el.addEventListener('click',()=>{w.conditions.splice(+el.dataset.index,1);rerender();}));
+                container.querySelectorAll('.special-item-input').forEach(inp=>inp.addEventListener('input',e=>{const i=+e.target.dataset.index;if(!w.items[i])w.items[i]={text:'',variableChanges:{}};w.items[i].text=e.target.value;saveData();}));
+                container.querySelectorAll('.special-item-var-delta').forEach(inp=>inp.addEventListener('input',e=>{const i=+e.target.dataset.itemIndex,n=e.target.dataset.varName,d=parseFloat(e.target.value)||0;if(!w.items[i])return;if(!w.items[i].variableChanges)w.items[i].variableChanges={};if(d===0)delete w.items[i].variableChanges[n];else w.items[i].variableChanges[n]=d;saveData();}));
+                container.querySelectorAll('.special-item-var-clear').forEach(btn=>btn.addEventListener('click',e=>{const i=+e.currentTarget.dataset.itemIndex,n=e.currentTarget.dataset.varName;if(w.items[i]?.variableChanges)delete w.items[i].variableChanges[n];rerender();}));
+                container.querySelectorAll('.btn-remove-special-item').forEach(btn=>btn.addEventListener('click',()=>{w.items.splice(+btn.dataset.index,1);rerender();}));
+                container.querySelector('#btnAddSpecialItem')?.addEventListener('click',()=>{w.items.push({text:'新奖励',variableChanges:{}});rerender();});
             }
 
             function specialWheelConditionPassed(w) {
-                if (!w || !w.enabled || !w.triggerVariable) return false;
-                const cur = playerState[w.triggerVariable] !== undefined ? playerState[w.triggerVariable] : 0;
-                const target = Number(w.triggerValue) || 0;
-                switch (w.triggerOperator || '>=') {
-                    case '>=': return cur >= target; case '<=': return cur <= target; case '>': return cur > target;
-                    case '<': return cur < target; case '=': return cur === target; default: return false;
-                }
+                if (!w || !w.enabled) return false;
+                const conditions = Array.isArray(w.conditions) ? w.conditions : [];
+                if (!conditions.length) return true;
+                return conditions.every(c => {
+                    if (!c) return true;
+                    if (c.type === 'scene') return !!c.sceneId && visitedSceneIds.has(c.sceneId);
+                    if (c.type === 'option') return !!c.sceneId && !!c.optionId && selectedOptionKeys.has(c.sceneId + '::' + c.optionId);
+                    const cur = playerState[c.variable] !== undefined ? playerState[c.variable] : 0;
+                    const target = Number(c.value) || 0;
+                    switch (c.operator || '>=') {
+                        case '>=': return cur >= target; case '<=': return cur <= target; case '>': return cur > target;
+                        case '<': return cur < target; case '=': return cur === target; default: return false;
+                    }
+                });
             }
 
             function shouldTriggerSpecialWheel(scene) {
                 if (!scene || !scene.specialWheel) return false;
                 normalizeSpecialWheel(scene);
                 const w=scene.specialWheel;
-                if (!w.enabled || !w.triggerVariable || !w.items.length) return false;
+                if (!w.enabled || !Array.isArray(w.conditions) || !w.conditions.length || !w.items.length) return false;
                 if (w.once && w.used) return false;
                 return specialWheelConditionPassed(w);
             }
@@ -1641,6 +1699,9 @@
                 playerAchievements = [];
                 playerItems = [];
                 specialWheelReturnPending = false;
+                visitedSceneIds = new Set();
+                selectedOptionKeys = new Set();
+                gameData.scenes.forEach(s => { normalizeOptionIds(s); });
                 gameData.scenes.forEach(s => { normalizeSpecialWheel(s); s.specialWheel.used = false; });
             }
 
@@ -1723,6 +1784,9 @@
             function executeOptionSuccess(option) {
                 const sourceScene = getSceneById(previewCurrentSceneId);
                 if (!sourceScene) return;
+                // 记录玩家确实选择过这个选项，供💎条件使用。
+                normalizeOptionIds(sourceScene);
+                if (option.id) selectedOptionKeys.add(sourceScene.id + '::' + option.id);
                 // 必须先结算选项带来的变量变化，再检查 💎 条件。
                 applyVariableChanges(option);
                 recordAchievement(option);
@@ -1940,6 +2004,7 @@
                 const canvas=document.getElementById('wheelCanvas'); if(canvas){drawWheel(canvas,sectors,targetAngle,idx);canvas.classList.remove('spinning');}
                 if(item){
                     if(!playerItems.includes(item.text.trim())) playerItems.push(item.text.trim());
+                    if(item.variableChanges && typeof item.variableChanges === 'object') applyVariableChanges({variableChanges:item.variableChanges});
                     hint.textContent='💎 「'+item.text+'」'; hint.classList.add('show');
                     showToast(`💎 「${item.text.trim()}」`);
                 }
@@ -2075,6 +2140,7 @@
                         '<button class="preview-restart-btn" onclick="restartPreview()">↺ 重新开始</button><button class="preview-restart-btn ending-home-btn" onclick="returnToPortalHome()">首页</button>';
                     return;
                 }
+                visitedSceneIds.add(scene.id);
                 let html = `${renderPlayerStateBar()}<div class="history-bar" id="historyBar"></div><div class="preview-scene-title">${escapeHtml(scene.title||'')}</div><div class="preview-scene-text">${escapeHtml(scene.content||'')}</div>`;
                 document.getElementById('previewContent').innerHTML = html;
                 updateHistoryDisplay();
