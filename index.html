@@ -436,6 +436,11 @@
         }
 
             .special-item-main{flex:1;min-width:0}.special-item-vars{margin-top:6px;padding:7px 8px;background:rgba(0,0,0,.025);border-radius:8px}.special-item-vars-title{font-size:11px;color:#8d7f79;margin-bottom:4px}.special-item-vars-title span{color:#b9aaa5}.special-item-var-row{display:flex;align-items:center;gap:4px;margin-top:3px}.special-item-var-row>span{width:60px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.special-item-var-delta{flex:1;padding:5px 7px!important;font-size:12px!important}.special-item-var-clear{width:24px;height:28px;border:0;background:transparent;color:#b9aaa5;border-radius:6px;cursor:pointer}.special-item-var-clear:hover{background:#f5eeee;color:#a66}.special-item-no-vars{font-size:11px;color:#b9aaa5}.special-wheel-item{display:flex;align-items:flex-start;gap:6px;margin-top:7px}.special-wheel-item-number{flex:0 0 22px;text-align:center;padding-top:9px;font-size:11px;color:#a99b95}.special-wheel-item>.btn-remove-special-item{margin-top:7px}
+        .scene-page-switch{display:flex;gap:6px;margin:0 0 10px;padding:4px;background:#f8f3f1;border-radius:12px;}
+        .scene-page-tab{flex:1;border:0;background:transparent;border-radius:9px;padding:9px 10px;font-size:13px;color:#9b8d88;cursor:pointer;}
+        .scene-page-tab.active{background:#fff;color:#6f625d;box-shadow:0 2px 8px rgba(0,0,0,.06);font-weight:600;}
+        .scene-page-panel{display:none;}
+        .scene-page-panel.active{display:block;}
 </style>
 </head>
 <body class="portal-locked">
@@ -468,8 +473,18 @@
                     <div class="scene-search-wrap"><span class="scene-search-icon">⌕</span><input id="sceneSearch" class="scene-search" type="search" placeholder="搜索场景标题、正文或选项…" autocomplete="off"><button id="sceneSearchClear" class="scene-search-clear" aria-label="清除搜索">×</button></div>
                     <button class="btn-tool" id="btnDiagnostics" title="检查剧情结构">⚠️ 检查</button>
                 </div>
-                <div id="sceneCardsContainer" class="scene-cards-grid"></div>
-                <div class="empty-state" id="emptyState" style="display:none;"><div class="empty-icon">📝</div><div class="empty-title">还没有场景</div><div class="empty-desc">点击下方按钮创建第一个场景吧</div></div>
+                <div class="scene-page-switch" role="tablist" aria-label="场景类型">
+                    <button class="scene-page-tab active" id="scenePageNormal" type="button">📖 普通场景</button>
+                    <button class="scene-page-tab" id="scenePageSpecial" type="button">💎 特殊场景</button>
+                </div>
+                <div class="scene-page-panel active" id="normalScenePage">
+                    <div id="sceneCardsContainer" class="scene-cards-grid"></div>
+                    <div class="empty-state" id="emptyState" style="display:none;"><div class="empty-icon">📝</div><div class="empty-title">还没有场景</div><div class="empty-desc">点击下方按钮创建第一个场景吧</div></div>
+                </div>
+                <div class="scene-page-panel" id="specialScenePage">
+                    <div id="specialSceneCardsContainer" class="scene-cards-grid"></div>
+                    <div class="empty-state" id="specialEmptyState" style="display:none;"><div class="empty-icon">💎</div><div class="empty-title">还没有特殊场景</div><div class="empty-desc">点击下方“新建特殊场景”开始创建</div></div>
+                </div>
             </div>
             <div class="edit-view" id="editView">
                 <div class="edit-group collapsible-group"><div class="edit-collapse-row"><button class="edit-collapse" type="button"><span class="edit-label">场景标题</span><span class="edit-collapse-arrow">⌄</span></button></div><input type="text" class="edit-input" id="editSceneTitle" placeholder="输入场景标题" maxlength="60"></div>
@@ -490,7 +505,7 @@
                 <button class="btn-secondary" id="btnImport">导入</button>
                 <button class="btn-primary" id="btnAddScene">新建场景</button>
                 <button class="btn-primary" id="btnAddSpecialScene">新建特殊场景</button>
-                <button class="btn-primary" id="btnToggleSpecialScenes">🔄</button>
+                <button class="btn-primary" id="btnToggleSpecialScenes">💎 特殊场景</button>
                 <button class="btn-primary" id="btnPreview" style="background:#FFB3B3;box-shadow:0 4px 14px rgba(255,179,179,0.35);">预览</button>
             </div>
         </div>
@@ -921,91 +936,93 @@
 
             // ---- 应用导入数据（完整保留所有变量变化 + 条件变量） ----
             function applyImportedData(data) {
-                // 1. 收集所有变量变化 + 条件判定中引用的变量名
-                const allVarNames = new Set();
-                (data.scenes || []).forEach(s => {
-                    (s.options || []).forEach(o => {
-                        if (o.variableChanges && typeof o.variableChanges === 'object') {
-                            Object.keys(o.variableChanges).forEach(k => allVarNames.add(k));
-                        }
-                        if (o.conditionEnabled && o.conditionVariable) {
-                            allVarNames.add(o.conditionVariable);
-                        }
+                // 导入时不要“重建字段白名单”，否则新版功能一旦增加字段就会被静默丢失。
+                // 这里采用“完整深拷贝 + 规范化”的方式：未知字段也原样保留，未来扩展也能继续导入导出。
+                const imported = JSON.parse(JSON.stringify(data || {}));
+                const scenes = Array.isArray(imported.scenes) ? imported.scenes : [];
+
+                // 先确保场景 ID 唯一、选项 ID 唯一，避免旧作品没有 ID 或出现重复 ID 时导致跳转/触发条件失效。
+                const usedSceneIds = new Set();
+                const usedOptionIds = new Set();
+                scenes.forEach(s => {
+                    if (!s || typeof s !== 'object') return;
+                    let sid = (typeof s.id === 'string' && s.id.trim()) ? s.id : generateId();
+                    while (usedSceneIds.has(sid)) sid = generateId();
+                    s.id = sid;
+                    usedSceneIds.add(sid);
+                    if (!Array.isArray(s.options)) s.options = [];
+                    s.options.forEach(o => {
+                        if (!o || typeof o !== 'object') return;
+                        let oid = (typeof o.id === 'string' && o.id.trim()) ? o.id : generateOptionId();
+                        while (usedOptionIds.has(oid)) oid = generateOptionId();
+                        o.id = oid;
+                        usedOptionIds.add(oid);
                     });
-                    if (s.specialWheel && s.specialWheel.triggerVariable) {
-                        allVarNames.add(s.specialWheel.triggerVariable);
-                    }
-                    if (s.specialWheel && Array.isArray(s.specialWheel.conditions)) {
-                        s.specialWheel.conditions.forEach(c=>{ if(c?.type==='variable' && c.variable) allVarNames.add(c.variable); });
-                    }
-                    if (s.specialWheel && Array.isArray(s.specialWheel.items)) {
-                        s.specialWheel.items.forEach(item => {
-                            if (item?.variableChanges && typeof item.variableChanges === 'object') Object.keys(item.variableChanges).forEach(k => allVarNames.add(k));
+                });
+
+                // 保留所有原字段，同时补齐编辑器运行所需的基础字段。
+                scenes.forEach(s => {
+                    s.title = typeof s.title === 'string' ? s.title : '未命名';
+                    s.content = typeof s.content === 'string' ? s.content : '';
+                    s.options = Array.isArray(s.options) ? s.options.filter(o => o && typeof o === 'object').map(o => {
+                        if (typeof o.text !== 'string') o.text = '选项';
+                        if (!Object.prototype.hasOwnProperty.call(o, 'targetId')) o.targetId = null;
+                        if (!o.variableChanges || typeof o.variableChanges !== 'object' || Array.isArray(o.variableChanges)) o.variableChanges = {};
+                        if (typeof o.achievement !== 'string') o.achievement = '';
+                        if (typeof o.conditionEnabled !== 'boolean') o.conditionEnabled = !!o.conditionEnabled;
+                        if (typeof o.conditionVariable !== 'string') o.conditionVariable = o.conditionVariable || '';
+                        if (typeof o.conditionOperator !== 'string') o.conditionOperator = o.conditionOperator || '>=';
+                        if (!Number.isFinite(Number(o.conditionValue))) o.conditionValue = 0;
+                        if (!Object.prototype.hasOwnProperty.call(o, 'failTargetId')) o.failTargetId = null;
+                        return o;
+                    }) : [];
+                    s.isEnding = typeof s.isEnding === 'boolean' ? s.isEnding : false;
+                    s.order = Number.isFinite(Number(s.order)) ? Number(s.order) : 1.00;
+                    normalizeSpecialWheel(s);
+                    s.sceneType = s.sceneType === 'special' || (s.specialWheel && s.specialWheel.enabled) ? 'special' : 'normal';
+                });
+
+                // 修复不存在的跳转引用，但保留其它自定义字段。
+                scenes.forEach(s => {
+                    s.options.forEach(o => {
+                        if (o.targetId && !usedSceneIds.has(o.targetId)) o.targetId = null;
+                        if (o.failTargetId && !usedSceneIds.has(o.failTargetId)) o.failTargetId = null;
+                    });
+                    const w = s.specialWheel;
+                    if (w && Array.isArray(w.conditions)) {
+                        w.conditions.forEach(c => {
+                            if (c.type === 'scene' && c.sceneId && !usedSceneIds.has(c.sceneId)) c.sceneId = '';
+                            if (c.type === 'option') {
+                                if (c.sceneId && !usedSceneIds.has(c.sceneId)) c.sceneId = '';
+                                const owner = scenes.find(x => x.id === c.sceneId);
+                                if (c.optionId && (!owner || !owner.options.some(o => o.id === c.optionId))) c.optionId = '';
+                            }
                         });
                     }
                 });
-                const importedVars = Array.isArray(data.variables) ? data.variables.map(v => ({
-                    name: typeof v?.name === 'string' ? v.name : '',
-                    initialValue: Number.isFinite(Number(v?.initialValue)) ? Number(v.initialValue) : 0
-                })).filter(v => v.name.trim()) : [];
-                const existingNames = new Set(importedVars.map(v => v.name));
-                allVarNames.forEach(name => {
-                    if (!existingNames.has(name)) {
-                        importedVars.push({ name: name, initialValue: 0 });
-                    }
+
+                scenes.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+                // 变量也完整保留自定义字段；仅在缺少名称时过滤掉无效变量。
+                let variables = Array.isArray(imported.variables) ? imported.variables.filter(v => v && typeof v === 'object').map(v => ({...v})) : [];
+                variables = variables.filter(v => typeof v.name === 'string' && v.name.trim());
+                variables.forEach(v => {
+                    if (!Number.isFinite(Number(v.initialValue))) v.initialValue = 0;
                 });
 
-                const cleaned = data.scenes.map(s => ({
-                    id: s.id || generateId(),
-                    title: typeof s.title === 'string' ? s.title : '未命名',
-                    content: typeof s.content === 'string' ? s.content : '',
-                    options: Array.isArray(s.options) ? s.options.map(o => ({
-                        id: typeof o.id === 'string' && o.id ? o.id : generateOptionId(),
-                        text: typeof o.text === 'string' ? o.text : '选项',
-                        targetId: o.targetId || null,
-                        variableChanges: (o.variableChanges && typeof o.variableChanges === 'object') ? { ...o
-                            .variableChanges } : {},
-                        achievement: typeof o.achievement === 'string' ? o.achievement : '',
-                        conditionEnabled: !!o.conditionEnabled,
-                        conditionVariable: o.conditionVariable || '',
-                        conditionOperator: o.conditionOperator || '>=',
-                        conditionValue: o.conditionValue || 0,
-                        failTargetId: o.failTargetId || null
-                    })) : [],
-                    isEnding: typeof s.isEnding === 'boolean' ? s.isEnding : false,
-                    order: typeof s.order === 'number' ? s.order : 1.00,
-                    sceneType: s.sceneType === 'special' || (s.specialWheel && typeof s.specialWheel === 'object' && s.specialWheel.enabled) ? 'special' : 'normal',
-                    specialWheel: s.specialWheel && typeof s.specialWheel === 'object' ? {
-                        enabled: !!s.specialWheel.enabled,
-                        name: typeof s.specialWheel.name === 'string' ? s.specialWheel.name : '💎',
-                        triggerVariable: s.specialWheel.triggerVariable || '',
-                        triggerOperator: s.specialWheel.triggerOperator || '>=',
-                        triggerValue: Number(s.specialWheel.triggerValue) || 0,
-                        once: s.specialWheel.once !== false,
-                        used: !!s.specialWheel.used,
-                        items: Array.isArray(s.specialWheel.items) ? s.specialWheel.items.map(x => ({text: typeof x === 'string' ? x : (x?.text || '新奖励'), variableChanges: (typeof x === 'object' && x?.variableChanges && typeof x.variableChanges === 'object') ? {...x.variableChanges} : {}})) : [],
-                        conditions: Array.isArray(s.specialWheel.conditions) ? s.specialWheel.conditions.map(c => ({type:['variable','scene','option'].includes(c?.type)?c.type:'variable',variable:c?.variable||'',operator:c?.operator||'>=',value:Number(c?.value)||0,sceneId:c?.sceneId||'',optionId:c?.optionId||''})) : []
-                    } : { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
-                }));
+                // 对旧版本里“只保存 triggerVariable”的特殊事件做兼容转换。
+                scenes.forEach(s => normalizeSpecialWheel(s));
 
-                const ids = new Set(cleaned.map(s => s.id));
-                cleaned.forEach(s => {
-                    s.options = s.options.map(o => ({
-                        ...o,
-                        targetId: o.targetId && ids.has(o.targetId) ? o.targetId : null,
-                        failTargetId: o.failTargetId && ids.has(o.failTargetId) ? o.failTargetId : null
-                    }));
-                });
-
-                cleaned.sort((a, b) => a.order - b.order);
-                const nsid = data.startSceneId && ids.has(data.startSceneId) ? data.startSceneId : (cleaned.length > 0 ?
-                    cleaned[0].id : null);
+                const startSceneId = imported.startSceneId && usedSceneIds.has(imported.startSceneId)
+                    ? imported.startSceneId
+                    : (scenes.length ? scenes[0].id : null);
 
                 return {
-                    scenes: cleaned,
-                    startSceneId: nsid,
-                    title: data.title || '导入的游戏',
-                    variables: importedVars
+                    scenes,
+                    startSceneId,
+                    title: typeof imported.title === 'string' && imported.title ? imported.title : '导入的游戏',
+                    variables,
+                    version: imported.version || DATA_VERSION
                 };
             }
 
@@ -1033,8 +1050,9 @@
             // ---------- 重置功能 ----------
             function resetToDefault() {
                 showModal('💔 推翻一切', '确定要删除所有场景，只保留一个起始场景吗？\n所有场景和变量将被清空，此操作不可撤销！', function() {
+                    // 只保留一张普通场景卡和一张特殊场景卡，不清空变量系统
                     gameData.scenes = [];
-                    gameData.variables = [];
+
                     const fid = generateId();
                     gameData.scenes.push({
                         id: fid,
@@ -1050,6 +1068,28 @@
                         specialWheel: { enabled:false, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] },
                         sceneType: 'normal'
                     });
+
+                    const sid = generateId();
+                    gameData.scenes.push({
+                        id: sid,
+                        title: '💎 特殊场景',
+                        content: '',
+                        options: [],
+                        isEnding: false,
+                        order: 2.00,
+                        sceneType: 'special',
+                        specialWheel: {
+                            enabled:true,
+                            name:'💎',
+                            triggerVariable:'',
+                            triggerOperator:'>=',
+                            triggerValue:0,
+                            once:true,
+                            used:false,
+                            items:[]
+                        }
+                    });
+
                     gameData.startSceneId = fid;
                     specialSceneMode = false;
                     document.body.classList.remove('special-scene-mode');
@@ -1085,7 +1125,7 @@
                 return card;
             }
 
-            function fullRefreshSceneCards() {
+            function renderAllScenePages() {
                 const container = document.getElementById('sceneCardsContainer');
                 container.innerHTML = '';
                 const empty = document.getElementById('emptyState');
@@ -1103,7 +1143,7 @@
                 if (!scene) return;
                 const oldCard = document.getElementById(`scene-card-${sceneId}`);
                 if (oldCard) { const newCard = createCardElement(scene, gameData.scenes.findIndex(s => s.id === sceneId));
-                    oldCard.replaceWith(newCard); } else fullRefreshSceneCards();
+                    oldCard.replaceWith(newCard); } else renderAllScenePages();
             }
 
             function updateStartBadge() {
@@ -1141,41 +1181,47 @@
             function isSpecialScene(scene) {
                 return !!scene && (scene.sceneType === 'special' || (scene.specialWheel && scene.specialWheel.enabled === true));
             }
+            function getNormalScenes() { return gameData.scenes.filter(s => !isSpecialScene(s)); }
+            function getSpecialScenes() { return gameData.scenes.filter(s => isSpecialScene(s)); }
+            function getVisibleScenes() { return specialSceneMode ? getSpecialScenes() : getNormalScenes(); }
 
-            function getVisibleScenes() {
-                return gameData.scenes.filter(s => specialSceneMode ? isSpecialScene(s) : !isSpecialScene(s));
-            }
-
-            function renderSpecialSceneCards() {
-                const container = document.getElementById('sceneCardsContainer');
-                const empty = document.getElementById('emptyState');
-                if (!container) return;
-                container.innerHTML = '';
-                const scenes = getVisibleScenes();
-                if (!scenes.length) {
-                    if (empty) { empty.style.display='flex'; empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode('💎')); empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode('还没有特殊场景')); empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode('点击下方工具栏中的“💎 新建特殊场景”开始创建')); container.appendChild(empty); }
+            function renderScenePage(containerId, emptyId, scenes, isSpecial) {
+                const container=document.getElementById(containerId), empty=document.getElementById(emptyId);
+                if(!container || !empty) return;
+                container.innerHTML='';
+                if(!scenes.length){
+                    empty.style.display='flex';
+                    empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode(isSpecial?'💎':'📝'));
+                    empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode(isSpecial?'还没有特殊场景':'还没有场景'));
+                    empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode(isSpecial?'点击下方“新建特殊场景”开始创建':'点击下方“新建场景”开始创建'));
+                    container.appendChild(empty);
                     return;
                 }
-                if (empty) empty.style.display='none';
+                empty.style.display='none';
                 scenes.forEach((scene,index)=>container.appendChild(createCardElement(scene,index)));
             }
-
-            let specialSceneToggleLocked = false;
-            function toggleSpecialSceneMode() {
-                // 防止手机/鼠标快速连续点击导致列表重复重绘，避免特殊场景卡出现瞬间消失。
-                if (specialSceneToggleLocked) return;
-                specialSceneToggleLocked = true;
-                setTimeout(() => { specialSceneToggleLocked = false; }, 180);
-
-                specialSceneMode = !specialSceneMode;
-                document.body.classList.toggle('special-scene-mode', specialSceneMode);
-                const btn = document.getElementById('btnToggleSpecialScenes');
-                if (btn) btn.textContent = specialSceneMode ? '普通场景' : '特殊场景';
-                const title = document.getElementById('gameTitleInput');
-                if (title) title.closest('.large-title-section')?.querySelector('.badge-start')?.classList.toggle('special-mode-label', specialSceneMode);
-                currentEditingSceneId = null;
-                renderListView();
+            function renderAllScenePages(){
+                renderScenePage('sceneCardsContainer','emptyState',getNormalScenes(),false);
+                renderScenePage('specialSceneCardsContainer','specialEmptyState',getSpecialScenes(),true);
+                const search=document.getElementById('sceneSearch');
+                if(search && search.value) filterSceneCards(search.value);
             }
+            function renderSpecialSceneCards(){ renderScenePage('specialSceneCardsContainer','specialEmptyState',getSpecialScenes(),true); }
+
+            function setScenePage(special){
+                specialSceneMode=!!special;
+                document.getElementById('normalScenePage')?.classList.toggle('active',!specialSceneMode);
+                document.getElementById('specialScenePage')?.classList.toggle('active',specialSceneMode);
+                document.getElementById('scenePageNormal')?.classList.toggle('active',!specialSceneMode);
+                document.getElementById('scenePageSpecial')?.classList.toggle('active',specialSceneMode);
+                document.body.classList.toggle('special-scene-mode',specialSceneMode);
+                const btn=document.getElementById('btnToggleSpecialScenes');
+                if(btn) btn.textContent=specialSceneMode?'📖 普通场景':'💎 特殊场景';
+                const search=document.getElementById('sceneSearch');
+                if(search){ search.value=''; document.getElementById('sceneSearchClear')?.classList.remove('show'); }
+                updateStartBadge();
+            }
+            function toggleSpecialSceneMode(){ setScenePage(!specialSceneMode); }
 
             function renderListView() {
                 listScrollPosition = document.getElementById('contentArea').scrollTop;
@@ -1183,9 +1229,10 @@
                 document.getElementById('editView').classList.remove('active');
                 currentEditingSceneId = null;
                 document.getElementById('bottomBar').style.display = 'flex';
+                setScenePage(specialSceneMode);
                 document.body.classList.toggle('special-scene-mode', specialSceneMode);
                 renderNavBar();
-                fullRefreshSceneCards();
+                renderAllScenePages();
                 updateStartBadge();
                 document.getElementById('gameTitleInput').value = gameData.title;
                 requestAnimationFrame(() => { document.getElementById('contentArea').scrollTop = listScrollPosition; });
@@ -1542,11 +1589,31 @@
 
             function addNewSpecialScene() {
                 const nid = generateId();
-                const maxOrder = gameData.scenes.reduce((max, s) => Math.max(max, Number(s.order) || 0), 0);
+                // 特殊场景独立计算排序，避免与普通场景混用 order 导致新增后显示异常。
+                const maxOrder = gameData.scenes
+                    .filter(s => isSpecialScene(s))
+                    .reduce((max, s) => Math.max(max, Number(s.order) || 0), 0);
+
                 const scene = {
-                    id: nid, title: '💎 特殊场景', content: '', options: [], isEnding: false, order: Math.round((maxOrder + 1) * 100) / 100, sceneType: 'special',
-                    specialWheel: { enabled:true, name:'💎', triggerVariable:'', triggerOperator:'>=', triggerValue:0, once:true, used:false, items:[] }
+                    id: nid,
+                    title: '💎 特殊场景',
+                    content: '',
+                    options: [],
+                    isEnding: false,
+                    order: Math.round((maxOrder + 1) * 100) / 100,
+                    sceneType: 'special',
+                    specialWheel: {
+                        enabled:true,
+                        name:'💎',
+                        triggerVariable:'',
+                        triggerOperator:'>=',
+                        triggerValue:0,
+                        once:true,
+                        used:false,
+                        items:[]
+                    }
                 };
+
                 gameData.scenes.push(scene);
                 gameData.scenes.sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
                 specialSceneMode = true;
@@ -1568,14 +1635,14 @@
                 gameData.scenes.push(copy);
                 gameData.scenes.sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
                 saveData();
-                fullRefreshSceneCards();
+                renderAllScenePages();
                 showToast('已复制场景 ✨');
                 openSceneEditor(copy.id);
             }
 
             function filterSceneCards(query) {
                 const q = (query || '').trim().toLowerCase();
-                const container = document.getElementById('sceneCardsContainer');
+                const container = document.getElementById(specialSceneMode ? 'specialSceneCardsContainer' : 'sceneCardsContainer');
                 if (!container) return;
                 let matches = 0;
                 container.querySelectorAll('.scene-card').forEach(card => {
@@ -1672,7 +1739,7 @@
                     if (gameData.startSceneId === id) gameData.startSceneId = gameData.scenes.length > 0 ? gameData
                         .scenes[0].id : null;
                     saveData();
-                    fullRefreshSceneCards();
+                    renderAllScenePages();
                     updateStartBadge();
                     showToast('场景已删除');
                     goBackToList();
@@ -2383,7 +2450,7 @@
                     gameData.scenes.forEach(s => { normalizeSpecialWheel(s); s.specialWheel.used = false; });
                     saveData();
                     renderListView();
-                    fullRefreshSceneCards();
+                    renderAllScenePages();
                     updateStartBadge();
                     document.getElementById('gameTitleInput').value = gameData.title;
                     showToast('导入成功 📥');
@@ -2648,6 +2715,12 @@
                     const btn=e.target.closest('[data-copy-scene]');
                     if(btn){ e.stopPropagation(); copyScene(btn.dataset.copyScene); }
                 });
+                document.getElementById('specialSceneCardsContainer')?.addEventListener('click', function(e){
+                    const btn=e.target.closest('[data-copy-scene]');
+                    if(btn){ e.stopPropagation(); copyScene(btn.dataset.copyScene); }
+                });
+                document.getElementById('scenePageNormal')?.addEventListener('click', function(){ setScenePage(false); });
+                document.getElementById('scenePageSpecial')?.addEventListener('click', function(){ setScenePage(true); });
 
                 // ---- 通用 ----
                 // 工具栏统一事件委托：避免列表刷新后个别按钮出现偶发“点了没反应”。
@@ -2682,7 +2755,7 @@
                     s.order = newOrder;
                     gameData.scenes.sort((a, b) => a.order - b.order);
                     saveData();
-                    fullRefreshSceneCards();
+                    renderAllScenePages();
                     showToast('序号已更新');
                 });
 
