@@ -840,7 +840,14 @@
                 conditions: 'cd',
                 type: 'ct',
                 sceneId: 'si',
-                optionId: 'oi'
+                optionId: 'oi',
+                achievements: 'ags',
+                endings: 'eds',
+                history: 'his',
+                obtainedContent: 'oc',
+                settings: 'cfg',
+                gameState: 'gs',
+                triggeredEvents: 'te'
             };
             const REV_KEY_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
 
@@ -1017,13 +1024,15 @@
                     ? imported.startSceneId
                     : (scenes.length ? scenes[0].id : null);
 
-                return {
-                    scenes,
-                    startSceneId,
-                    title: typeof imported.title === 'string' && imported.title ? imported.title : '导入的游戏',
-                    variables,
-                    version: imported.version || DATA_VERSION
-                };
+                // 保留新版增加的所有顶层数据字段，避免旧导入逻辑吞掉扩展内容。
+                // 例如：成就、结局、历史、获得内容、特殊系统数据等。
+                const restored = { ...imported };
+                restored.scenes = scenes;
+                restored.startSceneId = startSceneId;
+                restored.title = typeof imported.title === 'string' && imported.title ? imported.title : '导入的游戏';
+                restored.variables = variables;
+                restored.version = imported.version || DATA_VERSION;
+                return restored;
             }
 
             // ---------- UI 辅助 ----------
@@ -1125,18 +1134,8 @@
                 return card;
             }
 
-            function renderAllScenePages() {
-                const container = document.getElementById('sceneCardsContainer');
-                container.innerHTML = '';
-                const empty = document.getElementById('emptyState');
-                const visibleScenes = getVisibleScenes();
-                if (visibleScenes.length === 0) { empty.style.display = 'flex';
-                    if (specialSceneMode) { empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode('💎')); empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode('还没有特殊场景')); empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode('点击下方工具栏中的“💎 新建特殊场景”开始创建')); }
-                    else { empty.querySelector('.empty-icon')?.replaceChildren(document.createTextNode('📝')); empty.querySelector('.empty-title')?.replaceChildren(document.createTextNode('还没有场景')); empty.querySelector('.empty-desc')?.replaceChildren(document.createTextNode('点击下方按钮创建第一个场景吧')); }
-                    container.appendChild(empty); } else { empty.style.display = 'none';
-                    visibleScenes.forEach((scene, index) => container.appendChild(createCardElement(scene, index))); }
-                const search=document.getElementById('sceneSearch'); if(search && search.value) filterSceneCards(search.value);
-            }
+            /* 已移除重复的 renderAllScenePages 旧版本，统一使用后方版本 */
+
 
             function updateCardBySceneId(sceneId) {
                 const scene = gameData.scenes.find(s => s.id === sceneId);
